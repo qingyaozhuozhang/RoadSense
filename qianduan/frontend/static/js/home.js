@@ -3,10 +3,10 @@
   const el = id => document.getElementById(id);
   function updateStatus(data) {
     const badge = el('overview-device-badge');
-    badge.textContent = data.online ? (data.simulator ? '模拟设备在线 · DEMO' : '设备已连接') : '设备暂未连接';
+    badge.textContent = data.online ? '设备已连接' : '设备暂未连接';
     badge.className = `badge ${data.online ? 'badge-success' : 'badge-neutral'}`;
     const connection = el('overview-connection');
-    connection.textContent = data.online ? (data.simulator ? '模拟在线' : '在线') : '离线';
+    connection.textContent = data.online ? '在线' : '离线';
     connection.className = `badge ${data.online ? 'badge-success' : 'badge-neutral'}`;
     el('overview-command').textContent = ({ RUNNING:'正在巡检', PAUSED:'任务已暂停', STOP:'待机中' })[data.command] || data.command || '--';
     el('overview-session').textContent = data.session_id || '暂无运行任务';

@@ -4,7 +4,6 @@
  */
 (() => {
   'use strict';
-  const labelStyles = {street:['道路','amap://styles/normal'],bright:['明亮','amap://styles/whitesmoke'],dark:['夜间','amap://styles/dark']};
   const valid=(lon,lat)=>Number.isFinite(+lon)&&Number.isFinite(+lat)&&Math.abs(+lon)<=180&&Math.abs(+lat)<=90&&!(+lon===0&&+lat===0);
   // The same WGS84->GCJ02 approximation as server/coordinate_utils.py.
   // Avoid converting GPS records in permanent storage.
@@ -25,7 +24,7 @@
       const response=await fetch('/api/map_config',{cache:'no-store'});
       if(!response.ok)throw new Error(`读取高德配置失败 (HTTP ${response.status})`);
       const cfg=await response.json();
-      if(!cfg.configured||!cfg.key)throw new Error('尚未配置高德 Web端(JS API) Key。请查看 README_高德地图接入_完整操作.md。');
+      if(!cfg.configured||!cfg.key)throw new Error('地图服务暂不可用，请联系管理员。');
       // Same-origin proxy routes to official AMap services; the security JS code never reaches the browser.
       window._AMapSecurityConfig={serviceHost:new URL(cfg.service_host||'/_AMapService',window.location.origin).href};
       if(!window.AMapLoader){
@@ -45,22 +44,12 @@
   window.createRoadSenseMap=(id,opts={})=>{
     const node=document.getElementById(id);
     if(!node)return {update(){},clear(){},setPoints(){},focus(){}};
-    let map=null,AMap=null,primary=null,pointMarkers=[],points=[],current=null,style='street',follow=true,lastCenter=null;
+    let map=null,AMap=null,primary=null,pointMarkers=[],points=[],current=null,follow=true,lastCenter=null;
     // This element is shared by all page types, so do not destroy it during map initialization.
     const overlay=document.createElement('div');overlay.className='rs-map-message';overlay.hidden=true;
     const description=document.createElement('span');overlay.append(description);node.append(overlay);
     const showError=(message)=>{description.textContent=message;overlay.hidden=false;};
     const hideError=()=>{overlay.hidden=true;};
-    const switcher=document.createElement('div');switcher.className='rs-map-switch';switcher.setAttribute('aria-label','高德地图风格');
-    for(const [name,[title,mapStyle]] of Object.entries(labelStyles)){
-      const button=document.createElement('button');button.type='button';button.textContent=title;button.dataset.mapStyle=name;
-      button.classList.toggle('is-active',name===style);
-      button.onclick=()=>{
-        style=name;switcher.querySelectorAll('button').forEach(b=>b.classList.toggle('is-active',b.dataset.mapStyle===name));
-        if(map)map.setMapStyle(mapStyle);
-      };
-      switcher.append(button);
-    }
     const centerButton=document.createElement('button');centerButton.type='button';centerButton.className='rs-center-button';centerButton.textContent='◎ 跟随定位';
     centerButton.onclick=()=>{follow=true;if(map&&current)map.setZoomAndCenter(18.4,current);};
     // Load lazily on first valid coordinates. Async updates can race: re-render latest state after load.
@@ -75,10 +64,10 @@
           const initial=current|| (points.length?position(points[0].lon,points[0].lat):[116.397428,39.90923]);
           const mapDiv=document.createElement('div');mapDiv.className='rs-amap-canvas';node.prepend(mapDiv);
           map=new AMap.Map(mapDiv,{center:initial,zoom:opts.zoom||18.2,viewMode:'2D',resizeEnable:true,
-            mapStyle:labelStyles[style][1],showLabel:true,features:['bg','road','building','point']});
+            mapStyle:'amap://styles/normal',showLabel:true,features:['bg','road','building','point']});
           map.addControl(new AMap.Scale());
           if(AMap.ToolBar)map.addControl(new AMap.ToolBar({position:{right:'13px',top:'58px'}}));
-          node.append(switcher,centerButton,overlay);
+          node.append(centerButton,overlay);
           map.on('dragstart',()=>{follow=false;});
           map.on('complete',hideError);
           if(window.ResizeObserver)new ResizeObserver(()=>{if(map&&node.offsetWidth&&node.offsetHeight)map.resize();}).observe(node);

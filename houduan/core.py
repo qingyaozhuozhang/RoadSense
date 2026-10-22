@@ -15,7 +15,7 @@ import requests
 import numpy as np
 import onnxruntime as ort
 import ast
-from obb_inference import decode_predictions, draw_detections
+from obb_inference import decode_predictions, draw_detections, draw_severity_hud
 from video_pipeline import LatestJpeg, make_preview_server
 
 try:
@@ -101,6 +101,8 @@ active_camera = None
 latest_detections = []
 latest_prediction_time = 0.0
 latest_infer_ms = None
+latest_damage_ratio = 0.0
+latest_damage_level = 0
 jpeg_hub = LatestJpeg()
 current_camera_index: Optional[int] = None
 current_camera_brightness: Optional[float] = None
@@ -383,10 +385,8 @@ class YOLO_ONNX_Engine:
         area=sum(d['area'] for d in detections)
         fraction=area/max(1,frame.shape[0]*frame.shape[1])
         level=0 if not detections else (1 if fraction<=THRES_MILD else 2 if fraction<=THRES_MODERATE else 3)
-        name=['None','Mild','Moderate','Severe'][level]
-        color=[(0,255,0),(0,255,255),(0,165,255),(0,0,255)][level]
-        cv2.putText(annotated,f'Severity: {name} ({fraction:.2%})',
-                    (20,40),cv2.FONT_HERSHEY_SIMPLEX,.75,color,2,cv2.LINE_AA)
+        self.last_damage_ratio = max(0.0,min(1.0,fraction))
+        annotated = draw_severity_hud(annotated, self.last_damage_ratio, level)
         return annotated,level
 
 
@@ -487,6 +487,8 @@ def run_video_render_loop():
             detections = list(latest_detections)
             detected_at = latest_prediction_time
             inference_ms = latest_infer_ms
+            damage_ratio = latest_damage_ratio
+            damage_level = latest_damage_level
             command = global_command
         ok, frame = cam.read() if cam is not None else (False, None)
         if ok and frame is not None:
@@ -495,9 +497,8 @@ def run_video_render_loop():
             if (command == 'RUNNING' and detections and detected_at
                 and start - detected_at < 2.0):
                 frame = draw_detections(frame, detections, getattr(cam, 'class_names', []))
-            if inference_ms is not None and command == 'RUNNING':
-                cv2.putText(frame, f'AI: {inference_ms:.0f}ms', (12,frame.shape[0]-15),
-                            cv2.FONT_HERSHEY_SIMPLEX,.52,(52,225,136),2,cv2.LINE_AA)
+            if command == 'RUNNING' and detected_at and start-detected_at < 2.0:
+                frame = draw_severity_hud(frame,damage_ratio,damage_level)
             h, w = frame.shape[:2]
             if w > VIDEO_OUTPUT_WIDTH:
                 new_size = (VIDEO_OUTPUT_WIDTH, round(h * VIDEO_OUTPUT_WIDTH / w))
@@ -642,7 +643,7 @@ def run_map_loop() -> None:
 def run_detection_loop() -> None:
     global latest_frame, latest_detection_count
     global current_camera_index, current_camera_brightness, current_camera_signal
-    global active_camera,latest_detections,latest_prediction_time,latest_infer_ms
+    global active_camera,latest_detections,latest_prediction_time,latest_infer_ms,latest_damage_ratio,latest_damage_level
     cam = CameraStream()
     with lock: active_camera=cam
     model = None
@@ -677,12 +678,16 @@ def run_detection_loop() -> None:
                 latest_detections=list(model.last_detections)
                 latest_prediction_time=time.monotonic()
                 latest_infer_ms=model.last_infer_ms
+                latest_damage_ratio=model.last_damage_ratio
+                latest_damage_level=severity_level
                 cam.class_names=model.classes
 
         else:
             with lock:
                 latest_detections=[]
                 latest_prediction_time=0.0
+                latest_damage_ratio=0.0
+                latest_damage_level=0
             annotated_frame = frame.copy()
             severity_level = 0
 
@@ -757,7 +762,6 @@ if __name__ == "__main__":
 
     threading.Thread(target=report_url_to_cloud, daemon=True).start()
 
-    # 删除了一行重复的硬件线程启动代码
     threading.Thread(target=run_gps_reader, daemon=True).start()
 
     from flask import Flask, request, jsonify
@@ -766,8 +770,7 @@ if __name__ == "__main__":
     from amap_proxy import amap_blueprint
     flask_app.register_blueprint(amap_blueprint)
 
-    # Original phone node remains at https://PI_LAN_IP:8080/ ; share the polished UI
-    # assets with the independent cloud /phone page, no separate JS implementation.
+    # Serve the mobile GPS page independently over HTTPS.
     from pathlib import Path
     from flask import render_template, send_from_directory, Response
     PHONE_UI_ROOT = Path(__file__).resolve().parent / 'phone_ui'

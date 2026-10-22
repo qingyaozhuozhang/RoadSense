@@ -42,3 +42,19 @@
 .rs-map-pin{pointer-events:auto}.amap-info-content{font-family:Inter,'PingFang SC','Microsoft Yahei',sans-serif}
 .archive-map-wrap>.archive-map{position:relative!important;min-height:0!important;height:100%!important}
 .mobile-map.roadsense-interactive-map{position:absolute;inset:0;min-height:0!important;height:100%!important}
+
+/* Same brand mark as the desktop RoadSense platform. */
+.sender-logo{padding:0!important;background:none!important;box-shadow:0 5px 18px #07afea33!important;border-radius:12px;overflow:hidden}
+.sender-logo img{width:100%;height:100%;display:block}
+.rs-map-switch{display:none!important}
+.sender-header{border-bottom:1px solid #3978a22c;padding-bottom:17px}
+.sender-hero{background:linear-gradient(128deg,#0c2e52,#123b63 60%,#0c2649);border-color:#4c91c055}
+
+
+/* Mobile readability */
+.sender-hero>p, .sender-status p, .sender-map-note, .sender-metrics span { font-size: 13px; }
+.sender-brand { font-size: 14px; }
+.sender-card-title h2 { font-size: 19px; }
+.sender-coord span, .sender-coord small { font-size: 12px; }
+.sender-actions button, .sender-metrics strong { font-size: 14px; }
+.sender-footer, .sender-footer small { font-size: 12px; }

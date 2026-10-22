@@ -3,22 +3,22 @@
 {% block title %}手机节点定位{% endblock %}
 {% block breadcrumb %}手机节点定位{% endblock %}
 {% block content %}
-<section class="page-heading"><div><p class="eyebrow">MOBILE LOCATION · RECEIVER</p><h1 class="page-title">手机节点定位</h1><p class="page-description">电脑端仅接收手机上传的经纬度，不会读取本机浏览器位置。GPS 模块正常时仍优先使用模块坐标。</p></div><div class="page-heading-actions"><span class="badge badge-neutral" id="phone-recv-badge">等待手机连接</span></div></section>
-<div class="gps-banner"><span class="gps-symbol"><svg class="icon"><use href="#i-location"/></svg></span><div><h2>等待手机定位节点上报</h2><p>请在手机浏览器打开下方提供的专用地址 <strong>/phone</strong>，点击“开始定位并上报”。电脑端收到手机坐标后才会显示具体经纬度和高德道路地图，不会申请电脑地理位置权限。</p></div></div>
+<section class="page-heading"><div><p class="eyebrow">MOBILE LOCATION · RECEIVER</p><h1 class="page-title">手机节点定位</h1><p class="page-description">查看手机上报的位置和连接状态。</p></div><div class="page-heading-actions"><span class="badge badge-neutral" id="phone-recv-badge">等待手机连接</span></div></section>
+<div class="gps-banner"><span class="gps-symbol"><svg class="icon"><use href="#i-location"/></svg></span><div><h2>等待手机定位节点上报</h2><p>手机连接后，当前位置将在下方实时更新。</p></div></div>
 <div class="gps-map-grid phone-view-grid">
-  <section class="panel monitor-card"><div class="panel-header"><div class="panel-heading"><h2>手机上报的实时位置地图</h2><p>高德道路地图 · 实际收到手机坐标后才显示</p></div><span class="badge badge-neutral" id="phone-map-state">等待位置注入</span></div>
-  <div class="view-shell map-shell gps-map-view"><div class="live-map roadsense-interactive-map" id="phone-location-map" aria-label="手机节点经纬度高德道路地图"></div><div class="view-overlay map-await" id="phone-map-waiting"><svg class="icon"><use href="#i-map"/></svg><strong>等待手机上传定位数据</strong><span>尚未收到有效坐标，接收到后自动加载高德道路地图</span></div></div><div class="view-footer"><span>交互式地图 · 手机坐标保留 WGS84 · 地图显示 GCJ-02</span><span id="phone-map-coords">-- / --</span></div></section>
-  <div class="stack"><section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机定位接收状态</h2><p>源：手机设备 · 云端被动接收</p></div><span class="badge badge-neutral" id="phone-source-status">未接入</span></div>
+  <section class="panel monitor-card"><div class="panel-header"><div class="panel-heading"><h2>手机上报的实时位置地图</h2><p>手机位置实时更新</p></div><span class="badge badge-neutral" id="phone-map-state">等待位置</span></div>
+  <div class="view-shell map-shell gps-map-view"><div class="live-map roadsense-interactive-map" id="phone-location-map" aria-label="手机节点经纬度高德道路地图"></div><div class="view-overlay map-await" id="phone-map-waiting"><svg class="icon"><use href="#i-map"/></svg><strong>等待手机上传定位数据</strong><span>位置上传成功后自动显示</span></div></div><div class="view-footer"><span>实时位置 · 城市道路地图</span><span id="phone-map-coords">-- / --</span></div></section>
+  <div class="stack"><section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机定位接收状态</h2><p>实时连接状态</p></div><span class="badge badge-neutral" id="phone-source-status">未接入</span></div>
     <div class="gps-status-big"><span class="signal-disc" id="phone-signal-disc"><svg class="icon"><use href="#i-crosshair"/></svg></span><div><strong id="phone-received-status">尚未收到定位上报</strong><p id="phone-received-note">请在手机上打开采集页面并保持上报</p></div></div>
     <div class="coordinate-boxes"><div class="coord-box"><span>手机经度 LONGITUDE</span><strong id="phone-recv-lon">--.------</strong></div><div class="coord-box"><span>手机纬度 LATITUDE</span><strong id="phone-recv-lat">--.------</strong></div></div>
     <div class="status-detail"><dl><dt>最后上报时间</dt><dd id="phone-last-received">--</dd></dl><dl><dt>距离上次上报</dt><dd id="phone-fix-age">--</dd></dl><dl><dt>上报有效性</dt><dd id="phone-validity">等待手机</dd></dl></div></section>
-    <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机端采集入口</h2><p>网址和二维码指向同一个手机定位页面</p></div><span class="badge badge-info" id="phone-entry-type">正在识别入口</span></div>
+    <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机端采集入口</h2><p>扫码进入，也可复制链接访问</p></div><span class="badge badge-info" id="phone-entry-type">正在识别入口</span></div>
       <div class="phone-link-panel phone-entry-simple">
         <div class="phone-entry-url-title"><span>方式一 · 手机输入网址</span><button class="btn btn-light" id="copy-phone-link" type="button">复制地址</button></div>
         <a id="phone-upload-link" class="phone-upload-url" href="/phone" target="_blank" rel="noopener noreferrer">正在查找手机可访问的地址…</a>
         <div class="phone-entry-qr-head">方式二 · 使用手机扫码</div>
         <div class="phone-qr-image-frame phone-qr-minimal"><img id="phone-entry-qr" alt="手机定位入口二维码" width="210" height="210" hidden><span id="phone-qr-loading">正在生成二维码…</span></div>
-        <p class="phone-entry-hint" id="phone-access-tip">手机需与服务器网络互通，且需使用手机信任的 HTTPS。</p>
+        <p class="phone-entry-hint" id="phone-access-tip">打开地址后点击“开始定位”，即可同步位置。</p>
       </div>
     </section></div>
 </div>

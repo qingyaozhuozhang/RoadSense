@@ -6,11 +6,12 @@
   <meta name="theme-color" content="#0a1528">
   <meta name="description" content="道路损伤智能巡检云端控制中心">
   <title>{% block title %}道路损伤智能巡检{% endblock %} · RoadSense</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/roadsense-mark.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
   {% block extra_head %}{% endblock %}
 </head>
-<body>
-  <!-- 本地 SVG 图标，不依赖外部图标字体 CDN -->
+<body class="{% if active_page == 'home' %}page-overview{% else %}page-inner{% endif %}">
   <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="svg-sprite" style="position:absolute;width:0;height:0;overflow:hidden">
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
     <symbol id="i-camera" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="3"/><path d="m17 10 4-3v10l-4-3"/><circle cx="10" cy="12" r="3"/></symbol>
@@ -42,7 +43,7 @@
   <div class="app-shell">
     <aside class="sidebar" id="sidebar">
       <a href="/" class="brand" aria-label="RoadSense 首页">
-        <span class="brand-icon"><svg class="icon"><use href="#i-road"/></svg></span>
+        <span class="brand-icon"><img class="rs-logo-image" src="{{ url_for('static', filename='img/roadsense-mark.svg') }}" alt="RoadSense" /></span>
         <span class="brand-words"><strong>ROAD<span>SENSE</span></strong><small>道路智能巡检平台</small></span>
       </a>
       <div class="sidebar-kicker">WORKSPACE <span>工作台</span></div>
@@ -63,15 +64,21 @@
         <p>设备状态与巡检记录实时同步</p>
         <a href="/detection">前往实时监控 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a>
       </div>
-      <div class="sidebar-bottom"><span class="connection-dot" id="sidebar-dot"></span><span id="sidebar-status">正在检查设备连接...</span><span class="side-version">v2.0</span></div>
+      <div class="sidebar-bottom"><span class="connection-dot" id="sidebar-dot"></span><span id="sidebar-status">正在检查设备连接...</span><span class="side-version">RS / 2.1</span></div>
     </aside>
     <div class="main-area">
       <header class="topbar">
         <div class="topbar-start"><button class="mobile-menu icon-button" type="button" id="menu-toggle" aria-label="打开导航" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><div class="topbar-crumb">控制中心 <svg class="icon icon-xs"><use href="#i-chevron"/></svg> <span>{% block breadcrumb %}概览{% endblock %}</span></div></div>
-        <div class="topbar-end"><span class="topbar-clock" id="topbar-clock">--:--:--</span><span class="topbar-divider"></span><span class="environment-label"><span class="pulse-dot"></span> 云端服务运行中</span><span class="topbar-avatar">RS</span></div>
+        <div class="topbar-end"><span class="topbar-clock" id="topbar-clock">--:--:--</span><span class="topbar-divider"></span><span class="environment-label"><span class="pulse-dot"></span> 云端服务运行中</span><span class="topbar-avatar"><img src="{{ url_for('static', filename='img/roadsense-mark.svg') }}" alt="RoadSense" /></span></div>
       </header>
       <main class="main-content" id="main-content">{% block content %}{% endblock %}</main>
-      <footer class="site-footer"><span>© 2026 ROAD<span class="accent-text">SENSE</span> · 道路损伤智能巡检平台</span><span>Edge AI <span class="footer-separator">/</span> Cloud Monitoring</span></footer>
+      <footer class="site-footer" aria-label="RoadSense 页面信息">
+        <div class="footer-brand">
+          <img src="{{ url_for('static', filename='img/roadsense-mark.svg') }}" alt="" aria-hidden="true">
+          <div><strong>ROAD<span>SENSE</span></strong><small>© 2026 道路损伤智能巡检平台</small></div>
+        </div>
+        <div class="footer-meta"><span class="footer-tag">视觉感知 · 位置追踪 · 数据归档</span><span class="footer-english">EDGE INTELLIGENCE <i></i> CLOUD MONITORING</span></div>
+      </footer>
     </div>
   </div>
   <div class="toast-area" id="toast-area" role="status" aria-live="polite"></div>

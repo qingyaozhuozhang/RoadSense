@@ -32,10 +32,10 @@
   }
   function stop(){if(watchId!==null)navigator.geolocation.clearWatch(watchId);watchId=null;active=false;controls();set('已停止上报','电脑端将在 30 秒内将手机上报视为过期');}
   $('sender-start').addEventListener('click',()=>{
-    if(!window.isSecureContext){set('无法启动','手机请使用 HTTPS 网址访问 /phone；非安全 HTTP 网络不能调用位置接口。');return;}
+    if(!window.isSecureContext){set('无法启动','无法使用当前位置，请通过安全链接重新打开定位页面。');return;}
     if(!navigator.geolocation){set('无法定位','该手机浏览器不支持定位服务');return;}
     if(active)return;
-    active=true;controls();set('正在获取手机位置','请在手机上授权定位访问（仅手机采集页面需要此权限）。');
+    active=true;controls();set('正在获取手机位置','请允许使用手机定位。');
     watchId=navigator.geolocation.watchPosition(success,err=>{
       set('手机定位异常',({1:'手机未授权位置权限',2:'手机无法获取卫星/网络位置',3:'手机定位超时'}[err.code]||err.message));
       if(err.code===1)stop();

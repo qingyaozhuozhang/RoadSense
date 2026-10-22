@@ -54,7 +54,7 @@
       window.roadSenseStatus = status;
       const text = q('#sidebar-status');
       const dot = q('#sidebar-dot');
-      if (text) text.textContent = status.online ? (status.simulator ? '本地模拟设备在线' : '边缘设备已连接') : '等待边缘设备连接';
+      if (text) text.textContent = status.online ? '边缘设备已连接' : '等待边缘设备连接';
       if (dot) dot.classList.toggle('is-online', Boolean(status.online));
       document.dispatchEvent(new CustomEvent('roadsense:status', {detail: status}));
     } catch (_) {

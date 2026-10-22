@@ -31,8 +31,8 @@
   function update(data){
     online=Boolean(data.online);
     $('status-badge').className=`badge badge-${online?'success':'danger'}`;
-    $('status-badge').textContent=online?(data.simulator?'模拟设备在线':'边缘设备在线'):'边缘设备离线';
-    $('video-connection').textContent=online?(data.simulator?'本地模拟设备':'真实摄像头设备'):'设备未上线';
+    $('status-badge').textContent=online?'边缘设备在线':'边缘设备离线';
+    $('video-connection').textContent=online?'巡检摄像头':'设备未上线';
     $('detail-connection').textContent=online?'在线':'离线';
     const cmd=labels[data.command]||data.command||'未知';
     $('session-display').textContent=`当前任务：${cmd}`;

@@ -80,6 +80,31 @@ def draw_detections(frame, detections, labels, colors=None):
         cv2.polylines(out,[points],True,color,2,cv2.LINE_AA)
         label=labels[cls] if cls<len(labels) else str(cls)
         p=tuple(map(int,points[np.argmin(points[:,1])]))
-        cv2.putText(out,f'{label} {item["confidence"]:.2f}',(max(2,p[0]),max(20,p[1]-5)),
+        cv2.putText(out,label,(max(2,p[0]),max(20,p[1]-5)),
                     cv2.FONT_HERSHEY_SIMPLEX,.52,color,2,cv2.LINE_AA)
+    return out
+
+
+def draw_severity_hud(frame, damage_ratio, severity_level):
+    """Top-right AI result card: area share and severity, never confidence."""
+    out=frame.copy()
+    h,w=out.shape[:2]
+    if h<80 or w<200:
+        return out
+    ratio=max(0.0,min(1.0,float(damage_ratio or 0.0)))
+    level=max(0,min(3,int(severity_level)))
+    color=((51,214,128),(37,195,237),(47,178,255),(90,84,245))[level]
+    names=('NONE','MILD','MODERATE','SEVERE')
+    width=max(164,min(260,int(w*0.42)))
+    x0=max(2,w-width-12);x1=min(w-2,x0+width)
+    y0=12;y1=min(h-8,87)
+    shade=out.copy()
+    cv2.rectangle(shade,(x0,y0),(x1,y1),(13,30,48),-1)
+    cv2.addWeighted(shade,.82,out,.18,0,out)
+    cv2.rectangle(out,(x0,y0),(x1,y1),(67,105,145),1,cv2.LINE_AA)
+    cv2.rectangle(out,(x0,y0),(x0+4,y1),color,-1)
+    cv2.putText(out,f'DAMAGE  {ratio:.1%}',(x0+14,y0+27),
+                cv2.FONT_HERSHEY_SIMPLEX,.53,(241,248,255),1,cv2.LINE_AA)
+    cv2.putText(out,f'SEVERITY  {names[level]}',(x0+14,y0+56),
+                cv2.FONT_HERSHEY_SIMPLEX,.48,color,1,cv2.LINE_AA)
     return out

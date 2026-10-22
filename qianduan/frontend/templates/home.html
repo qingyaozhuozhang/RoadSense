@@ -7,9 +7,13 @@
   <div><p class="eyebrow">OVERVIEW DASHBOARD</p><h1 class="page-title">道路巡检总览</h1><p class="page-description">实时掌握边缘设备状态、巡检任务与道路损伤检测情况</p></div>
   <div class="page-heading-actions"><span class="badge badge-neutral" id="overview-device-badge">等待设备数据</span><a href="/detection" class="btn btn-primary"><svg class="icon"><use href="#i-camera"/></svg>进入实时监控</a></div>
 </section>
-<section class="hero" aria-label="智能巡检控制中心">
-  <div><div class="hero-tag"><span class="pulse-dot"></span> ROAD INSPECTION · AI ENABLED</div><h2>让每一段道路，都有迹可循。</h2><p>基于边缘 AI 视觉识别与 GPS 空间定位，打通前端巡检、实时监控和云端损伤档案，实现道路巡检全流程可视化。</p><div class="hero-actions"><a href="/detection" class="btn btn-primary">开始巡检管理 <svg class="icon"><use href="#i-arrow"/></svg></a><a href="/severe" class="btn btn-outline-white">查看损伤档案</a></div></div>
-  <div class="hero-art" aria-hidden="true"><div class="hero-orbit"></div><div class="hero-symbol"><svg class="icon"><use href="#i-road"/></svg></div><span class="hero-mini top">AI · VISION</span><span class="hero-mini bottom">GPS · TRACKING</span></div>
+<section class="hero hero-overview" aria-label="智能巡检控制中心">
+  <div><div class="hero-tag"><span class="pulse-dot"></span> ROADSENSE / INTELLIGENT ROAD NETWORK</div><h2>让每一段道路，都有迹可循。</h2><p>融合实时视觉识别、位置追踪与损伤档案，快速掌握道路状态，让巡检结果清晰可查。</p><div class="hero-actions"><a href="/detection" class="btn btn-primary">开始巡检管理 <svg class="icon"><use href="#i-arrow"/></svg></a><a href="/severe" class="btn btn-outline-white">查看损伤档案</a></div></div>
+  <div class="hero-art" aria-hidden="true"><div class="hero-orbit"></div><div class="hero-symbol"><svg class="icon" aria-hidden="true"><use href="#i-road"/></svg></div><span class="hero-mini top">AI · VISION</span><span class="hero-mini bottom">GPS · TRACKING</span></div>
+</section>
+<section class="rs-capability-band" aria-label="RoadSense 系统能力">
+ <span class="rs-band-label"><img src="{{ url_for('static',filename='img/roadsense-mark.svg') }}" alt=""> <strong>ROADSENSE NETWORK</strong><small>道路感知 · 协同定位 · 智能归档</small></span>
+ <div class="rs-band-pills"><span>OBB 旋转目标检测</span><span>多源定位协同</span><span>端云实时通信</span><span>损伤空间档案</span></div>
 </section>
 <section class="stats-grid" aria-label="巡检数据统计">
   <article class="stat-card"><div><span class="stat-label">累计检测记录</span><strong class="stat-value" id="stat-total">--</strong><span class="stat-foot">全部历史检测结果</span></div><div class="stat-icon blue"><svg class="icon"><use href="#i-layers"/></svg></div></article>
@@ -31,12 +35,21 @@
     <div class="status-line"><span class="status-name"><svg class="icon"><use href="#i-clock"/></svg>最近记录时间</span><strong id="overview-lasttime">--</strong></div>
   </div></section>
 </div>
+<section class="rs-process panel" aria-label="巡检工作流">
+ <div class="rs-process-header"><div><span class="rs-section-kicker">MISSION WORKFLOW / 01—04</span><h2>从实时巡检，到每一条可追溯的记录</h2><p>采集、识别、定位、归档，全程同步。</p></div><a href="/detection" class="rs-process-link">进入巡检中心 <svg class="icon icon-sm"><use href="#i-arrow"/></svg></a></div>
+ <div class="rs-process-grid">
+ <a href="/detection" class="rs-process-card"><span class="rs-process-num">01 / CAPTURE</span><span class="rs-process-icon"><svg class="icon"><use href="#i-camera"/></svg></span><strong>视觉采集</strong><p>接入边缘摄像头，实时回传巡检画面。</p></a>
+ <a href="/detection" class="rs-process-card"><span class="rs-process-num">02 / PERCEPTION</span><span class="rs-process-icon"><svg class="icon"><use href="#i-crosshair"/></svg></span><strong>智能识别</strong><p>使用旋转目标框定位裂缝、坑洞等路面损伤。</p></a>
+ <a href="/gps" class="rs-process-card"><span class="rs-process-num">03 / GEOLOCATION</span><span class="rs-process-icon"><svg class="icon"><use href="#i-location"/></svg></span><strong>精准定位</strong><p>优先采用 GPS 模块，手机定位作为备用来源。</p></a>
+ <a href="/severe" class="rs-process-card"><span class="rs-process-num">04 / ARCHIVE</span><span class="rs-process-icon"><svg class="icon"><use href="#i-layers"/></svg></span><strong>空间归档</strong><p>按时间、等级与坐标关联道路损伤档案。</p></a>
+ </div>
+</section>
 <div class="two-column">
   <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>最近检测记录</h2><p>最新上报的道路损伤事件</p></div><a class="subtle-link" href="/severe">查看全部 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></div><div class="table-scroll"><table class="data-table"><thead><tr><th>记录时间</th><th>损伤等级</th><th>任务批次</th><th>坐标 (经度 / 纬度)</th></tr></thead><tbody id="recent-records"><tr><td colspan="4" class="table-empty">加载记录中...</td></tr></tbody></table></div></section>
   <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>快捷操作</h2><p>从工作台直接进入常用功能</p></div></div><div class="quick-actions">
     <a href="/detection" class="quick-link"><span class="stat-icon blue"><svg class="icon"><use href="#i-camera"/></svg></span><span><strong>实时视觉监控</strong><small>查看视频、地图并下发控制指令</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
     <a href="/severe" class="quick-link"><span class="stat-icon amber"><svg class="icon"><use href="#i-layers"/></svg></span><span><strong>查看损伤档案</strong><small>分类筛选、地图定位与 CSV 导出</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
-    <a href="/gps" class="quick-link"><span class="stat-icon purple"><svg class="icon"><use href="#i-location"/></svg></span><span><strong>GPS 辅助定位</strong><small>手机定位上报与树莓派副驾连接</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
+    <a href="/gps" class="quick-link"><span class="stat-icon purple"><svg class="icon"><use href="#i-location"/></svg></span><span><strong>GPS 模块定位</strong><small>查看硬件 GPS 位置与手机备用来源</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
   </div></section>
 </div>
 {% endblock %}

@@ -1,9 +1,4 @@
-"""RoadSense cloud service. Run `python server/app.py` from cloud_web.
-
-Maintains all routes from the uploaded Flask app.py for legacy edge compatibility.
-Server and front-end live in separate folders, but Flask serves both at one origin
-for easy local testing and to avoid requiring a Node build tool or permissive CORS.
-"""
+"""Flask server for device control, location, video streams and inspection records."""
 from __future__ import annotations
 
 import os
@@ -24,7 +19,7 @@ try:
     from .location_state import PositionManager, PHONE_TTL, valid_coordinates
     from .storage import RecordStore
     from .amap_proxy import amap_blueprint
-except ImportError:  # python server/app.py
+except ImportError:  # Allow direct execution with python server/app.py
     from location_state import PositionManager, PHONE_TTL, valid_coordinates
     from storage import RecordStore
     from amap_proxy import amap_blueprint
@@ -107,9 +102,6 @@ def create_app(config=None):
 
     @app.route('/severe')
     def severe(): return render_template('severe.html')
-
-    @app.route('/map-demo')
-    def map_demo(): return render_template('amap_demo.html')
 
     @app.route('/gps')
     def gps(): return render_template('gps.html')

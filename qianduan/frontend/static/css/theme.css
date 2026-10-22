@@ -1,0 +1,287 @@
+/* RoadSense visual theme.
+   Decorative photography stays behind the page; operational data remains readable. */
+:root {
+  --rs-navy: #0a2038;
+  --rs-ink: #16344f;
+  --rs-muted: #55758e;
+  --rs-border: #d9e7f2;
+  --rs-accent: #1976ed;
+}
+
+/* Type and contrast */
+body { font-size: 15px; line-height: 1.65; color: var(--rs-ink); background: #f8fbff; }
+.brand-words strong { font-size: 20px; }
+.brand-words small, .sidebar-kicker, .side-version { font-size: 12px; }
+.nav-item { font-size: 15px; min-height: 52px; }
+.sidebar-info strong { font-size: 15px; }
+.sidebar-info p, .sidebar-info a, .sidebar-bottom { font-size: 13px; }
+.topbar-crumb, .topbar-clock, .environment-label { font-size: 13px; }
+.page-title { font-size: clamp(27px, 2.15vw, 35px); color: #102e49; font-weight: 800; line-height: 1.25; }
+.page-description { font-size: 15px; color: #4f6d85; line-height: 1.7; }
+.page-heading .eyebrow { font-size: 12px; color: #216b97; letter-spacing: 1.9px; }
+.btn { font-size: 14px; min-height: 42px; }
+.badge { font-size: 12px; }
+.panel-heading h2 { font-size: 18px; color: #183650; }
+.panel-heading p, .panel-header .subtle-link { font-size: 13px; color: #617d95; }
+.stat-label, .stat-foot, .status-line, .severity-label, .severity-number { font-size: 13px; }
+.stat-value { font-size: 34px; }
+.rs-band-label small, .rs-band-pills span, .rs-process-link,
+.rs-process-header p, .rs-process-num, .rs-process-card p { font-size: 12px; }
+.rs-band-label strong, .rs-process-card strong { font-size: 15px; }
+.rs-process-header h2 { font-size: 21px; }
+.view-footer, .map-caption, .archive-summary small, .record-timestamp,
+.gps-status-big p, .step p, .status-detail dl, .coord-box span,
+.chart-caption, .data-table th, .data-table td, .table-tag, .quick-link small,
+.command-state small, .meta-cell span, .meta-cell strong, .hint-box, .field input,
+.field select, .filter-tab, .archive-summary strong, .map-fallback,
+.record-meta, .record-coord, .record-title, .archive-empty, .mini-count,
+.view-overlay span, .view-label, .status-name, .gps-source-entry p,
+.gps-source-coord, .phone-entry-hint, .phone-upload-url,
+.archive-map-empty-caption span { font-size: 13px; }
+.quick-link strong, .command-state strong, .archive-empty strong,
+.gps-source-title strong, .record-title { font-size: 15px; }
+.data-table th, .data-table td { padding-top: 15px; padding-bottom: 15px; }
+.data-table th { color: #5a7290; }
+.data-table td { color: #435e79; }
+.quick-link small, .record-meta, .record-coord, .stat-foot, .chart-caption { color: #637f97; }
+
+/* Layout: the upper portion carries a city scene; the rest stays white.
+   Overview has a taller scenic region than the other workspaces. */
+.app-shell { background: #f8fbff; }
+.main-area {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, #eaf5fd 0%, #f8fbff 49%, #fff 75%);
+}
+.main-area::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: max(385px, 40vh);
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(5, 28, 49, .34) 0%, rgba(9, 51, 77, .17) 30%, rgba(228, 244, 253, .78) 72%, #f8fbff 100%),
+    url('/static/img/roadsense-city-cover.jpg') center 37% / cover no-repeat;
+}
+/* 概览页：上方约 2/5 白色，向下过渡到约 3/5 城市航拍。
+   城市照片仅作为装饰层，内容卡片继续提供独立的实色背景。 */
+.page-overview .main-area {
+  background: #fff;
+}
+.page-overview .main-area::before {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  background-image:
+    linear-gradient(180deg,
+      #fff 0%,
+      #fff 28%,
+      rgba(255, 255, 255, .98) 36%,
+      rgba(255, 255, 255, .83) 44%,
+      rgba(255, 255, 255, .42) 54%,
+      rgba(247, 251, 255, .10) 62%,
+      rgba(11, 48, 75, .16) 100%),
+    url('/static/img/roadsense-city-cover.jpg');
+  background-position: center, center bottom;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+/* 保持导航和正文清晰；渐变位置随主内容高度自然延伸。 */
+.page-overview .page-heading {
+  background: linear-gradient(115deg, #ffffff 0%, #f6fbff 75%, #eaf5fc 100%);
+}
+.page-overview .panel,
+.page-overview .stat-card,
+.page-overview .rs-process,
+.page-overview .rs-capability-band {
+  background-color: rgba(255, 255, 255, .97);
+  backdrop-filter: blur(9px);
+}
+
+.main-area::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 320px;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 86% 0%, rgba(27, 164, 209, .15), transparent 63%);
+}
+.main-area > .topbar, .main-area > .main-content, .main-area > .site-footer {
+  position: relative;
+  z-index: 1;
+}
+.topbar {
+  background: rgba(255, 255, 255, .97);
+  border-bottom: 1px solid rgba(193, 218, 235, .88);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 2px 14px rgba(14, 54, 90, .06);
+}
+.topbar-crumb { color: #526e88; }
+.topbar-crumb span { color: #133550; }
+.topbar-clock, .environment-label { color: #526e87; }
+.main-content { padding-top: 28px; padding-bottom: 46px; background: transparent; }
+
+/* The heading never uses dark text over a dark photograph. */
+.page-heading {
+  padding: 25px 29px;
+  background: linear-gradient(110deg, #fff 4%, #f7fcff 66%, #e9f5fd 100%);
+  border: 1px solid rgba(177, 213, 236, .93);
+  border-radius: 18px;
+  box-shadow: 0 13px 35px rgba(10, 52, 84, .12), inset 0 1px 0 #fff;
+}
+.page-heading .badge { box-shadow: 0 3px 11px rgba(14, 85, 126, .10); }
+.page-heading-actions .btn-primary { box-shadow: 0 8px 19px rgba(27, 106, 218, .22); }
+.panel, .stat-card, .rs-process, .rs-capability-band {
+  border-color: var(--rs-border);
+  box-shadow: 0 10px 30px rgba(13, 54, 85, .065);
+}
+.stat-icon, .rs-process-icon, .signal-disc, .state-icon {
+  box-shadow: 0 6px 15px rgba(29, 99, 153, .16), inset 0 1px 1px rgba(255,255,255,.65);
+}
+.gps-banner { background: linear-gradient(108deg, #153b5e, #0d2843 64%, #113a5b); }
+.gps-banner h2 { font-size: 20px; }
+.gps-banner p { font-size: 14px; max-width: 760px; }
+.gps-symbol {
+  background: linear-gradient(145deg, #2188c6, #0b4a74);
+  border: 1px solid rgba(132, 215, 252, .50);
+  box-shadow: 0 10px 24px rgba(8, 27, 58, .3), inset 0 1px 0 rgba(255,255,255,.19);
+}
+.gps-symbol .icon { color: #e0faff; filter: drop-shadow(0 1px 6px rgba(123,241,255,.4)); }
+
+/* Hero: original city image fades smoothly into the original road insignia. */
+.hero-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(230px, 2fr);
+  align-items: center;
+  min-height: 335px;
+  padding: 34px clamp(28px, 3vw, 50px);
+  gap: 0;
+  background:
+    linear-gradient(90deg, rgba(5, 28, 50, .82) 0%, rgba(7, 36, 59, .56) 37%, rgba(5, 32, 56, .58) 56%, rgba(5, 29, 52, .96) 84%, #071e37 100%),
+    url('/static/img/roadsense-city-cover.jpg') center 45% / cover no-repeat;
+  border: 1px solid rgba(99, 207, 233, .31);
+  box-shadow: 0 22px 55px rgba(5,22,42,.30);
+}
+.hero-overview::before { opacity: .23; }
+.hero-overview::after { opacity: .52; }
+.hero-overview > div:first-child { min-width: 0; max-width: none; }
+.hero-overview h2 { font-size: clamp(30px, 2.65vw, 43px); line-height: 1.25; }
+.hero-overview p { font-size: 16px; line-height: 1.8; color: #eaf7ff; max-width: 585px; text-shadow: 0 1px 8px rgba(2, 16, 32, .35); }
+.hero-overview .hero-tag {
+  border-radius: 99px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: rgba(4, 30, 50, .77);
+}
+.hero-overview .hero-art { width: 100%; height: 248px; opacity: 1; filter: drop-shadow(0 12px 34px rgba(15,201,224,.19)); }
+.hero-overview .hero-symbol {
+  height: 136px;
+  width: 136px;
+  border-radius: 34px;
+  background: linear-gradient(135deg, rgba(30,124,181,.49), rgba(10,51,83,.77));
+  border: 1px solid rgba(111, 226, 241, .5);
+  box-shadow: 0 0 0 16px rgba(38,185,230,.08), 0 24px 40px rgba(0,0,0,.29), inset 0 0 30px rgba(25,214,231,.17);
+}
+.hero-overview .hero-symbol .icon { width: 83px; height: 83px; color: #b8f5ff; }
+.hero-overview .hero-orbit { inset: 4px 20%; }
+.hero-overview .hero-mini { font-size: 12px; }
+
+/* Night skyline in the sidebar, with a protected foreground for navigation. */
+.sidebar {
+  position: sticky;
+  isolation: isolate;
+  background: linear-gradient(170deg, #091b34 0%, #0b263f 62%, #071d36 100%);
+}
+.sidebar::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: 52%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, #0a2038 0%, rgba(7, 31, 55, .20) 43%, rgba(5, 24, 46, .25) 76%, #071c33 100%),
+    url('/static/img/sidebar-night.jpg') center bottom / cover no-repeat;
+}
+.sidebar::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 31%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(5, 25, 50, .15) 70%, #071b31 100%);
+}
+.sidebar > * { position: relative; z-index: 1; }
+.sidebar-info {
+  background: linear-gradient(140deg, rgba(8,43,79,.91), rgba(8,36,65,.91));
+  border: 1px solid rgba(90,176,227,.39);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 24px rgba(0,11,30,.22);
+}
+.sidebar-info p { color: #c1d8eb; }
+.sidebar-kicker { color: #9fbbd4; }
+.nav-item { color: #c8d9e9; }
+.nav-item.active { color: #fff; }
+.sidebar-bottom { border-color: rgba(143,192,224,.33); color: #d1e5f4; }
+
+/* Footer is a compact brand rail rather than a faded disclaimer. */
+.site-footer {
+  margin-top: 20px;
+  padding: 21px clamp(20px, 2.7vw, 44px);
+  min-height: 86px;
+  border-top: 1px solid rgba(88,194,229,.32);
+  background:
+    radial-gradient(circle at 82% 0%, rgba(39,143,198,.18), transparent 52%),
+    linear-gradient(110deg, #08223c, #081b32 63%, #092841);
+  box-shadow: inset 0 1px 0 rgba(120,212,235,.08);
+  color: #bad6e9;
+  align-items: center;
+}
+.footer-brand, .footer-meta { display: flex; align-items: center; gap: 13px; }
+.footer-brand img { width: 33px; height: 33px; border-radius: 9px; box-shadow: 0 0 17px rgba(28,179,233,.19); }
+.footer-brand div { display: flex; flex-direction: column; gap: 2px; }
+.footer-brand strong { color: #f6fcff; font-size: 14px; letter-spacing: 1.7px; line-height: 1.25; }
+.footer-brand strong span { color: #2cdecc; }
+.footer-brand small { color: #aecbdc; font-size: 12px; }
+.footer-meta { gap: 22px; flex-wrap: wrap; }
+.footer-tag { color: #d9ebf8; font-size: 13px; }
+.footer-english { color: #92bfdb; font-size: 11px; letter-spacing: 1.25px; font-weight: 700; white-space: nowrap; }
+.footer-english i { display: inline-block; width: 4px; height: 4px; margin: 0 8px; background: #20cbbf; border-radius: 50%; vertical-align: middle; }
+
+@media (max-width: 1100px) {
+  .hero-overview { grid-template-columns: minmax(0, 3fr) minmax(160px, 2fr); }
+  .hero-overview .hero-symbol { width: 110px; height: 110px; }
+  .site-footer { flex-wrap: wrap; }
+}
+@media (max-width: 760px) {
+  .sidebar { position: fixed; }
+  .main-content { padding: 18px 15px 32px; }
+  .main-area::before { height: 370px; }
+  .page-overview .main-area::before { height: 510px; }
+  .page-heading { padding: 19px 20px; }
+  .page-title { font-size: 27px; }
+  .page-description { font-size: 14px; }
+  .hero-overview { display: flex; min-height: 300px; }
+  .hero-overview > div:first-child { position: relative; z-index: 2; }
+  .hero-overview .hero-art { position: absolute; top: 20px; right: -38px; width: 50%; opacity: .21; }
+  .hero-overview p { font-size: 14px; }
+  .gps-banner h2 { font-size: 18px; }
+  .site-footer { padding: 20px 17px; }
+  .footer-tag { font-size: 12px; }
+}
+@media (max-width: 490px) {
+  .hero-overview { padding: 24px 21px; }
+  .hero-overview h2 { font-size: 26px; }
+  .stat-label, .stat-foot { font-size: 12px; }
+  .stat-value { font-size: 28px; }
+  .panel-heading h2 { font-size: 16px; }
+  .site-footer { gap: 15px; }
+  .footer-meta { gap: 8px; }
+  .footer-english { font-size: 10px; white-space: normal; }
+}

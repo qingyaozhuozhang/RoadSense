@@ -12,9 +12,9 @@
       const link=$('phone-upload-link');link.textContent=entryUrl||'未找到可供手机访问的网址';
       if(entryUrl)link.href=entryUrl; else link.removeAttribute('href');
       $('copy-phone-link').disabled=!entryUrl;
-      $('phone-entry-type').textContent=links.entry_kind==='pi'?'树莓派 HTTPS':links.entry_kind==='public'?'公网 HTTPS':'本地网络';
+      $('phone-entry-type').textContent=links.entry_kind==='pi'?'定位节点 HTTPS':links.entry_kind==='public'?'公网 HTTPS':'本地网络';
       $('phone-access-tip').textContent=links.hint||'手机和服务端必须网络互通。';
-      if(!entryUrl){statusMessage('请在 .env 中配置 LAN_HOST 或 PHONE_PUBLIC_URL');return;}
+      if(!entryUrl){statusMessage('手机入口暂不可用，请确认定位节点连接');return;}
       const res=await fetch('/api/mobile_qr',{cache:'no-store'});
       if(!res.ok){let detail=await res.json().catch(()=>({}));throw new Error(detail.message||'HTTP '+res.status);}
       const type=res.headers.get('content-type')||'';

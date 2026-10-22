@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% set active_page = 'severe' %}
+{% block title %}损伤记录档案{% endblock %}
+{% block breadcrumb %}损伤记录档案{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">INSPECTION ARCHIVE</p><h1 class="page-title">道路损伤档案</h1><p class="page-description">按损伤等级、巡检批次与关键字筛选历史记录，并关联空间位置</p></div><div class="page-heading-actions"><button type="button" class="btn btn-light" id="refresh-records"><svg class="icon"><use href="#i-refresh"/></svg>刷新数据</button><button type="button" class="btn btn-primary" id="export-records"><svg class="icon"><use href="#i-download"/></svg>导出 CSV</button></div></section>
+<div class="archive-statline" aria-label="损伤等级数量"><span class="mini-count">全部记录 <strong id="archive-total">--</strong></span><span class="mini-count">轻微损伤 <strong id="archive-mild">--</strong></span><span class="mini-count">中度损伤 <strong id="archive-moderate">--</strong></span><span class="mini-count">严重损伤 <strong id="archive-severe">--</strong></span></div>
+<div class="archive-toolbar" aria-label="档案筛选工具">
+  <label class="field" for="session-filter"><svg class="icon"><use href="#i-layers"/></svg><select id="session-filter"><option value="all">全部巡检批次</option></select></label>
+  <label class="field search-field" for="record-search"><svg class="icon"><use href="#i-search"/></svg><input type="search" id="record-search" placeholder="搜索任务编号、记录时间或坐标..." autocomplete="off"></label>
+  <div class="archive-tabs" role="group" aria-label="损伤等级筛选"><button type="button" class="filter-tab" data-level="all" aria-pressed="true">全部</button><button type="button" class="filter-tab" data-level="轻微" aria-pressed="false">轻微</button><button type="button" class="filter-tab" data-level="中度" aria-pressed="false">中度</button><button type="button" class="filter-tab" data-level="严重" aria-pressed="false">严重</button></div>
+</div>
+<div class="archive-summary"><strong>检测记录 <span id="filtered-count">--</span></strong><small>点击右侧记录，可快速定位至地图中的对应位置</small></div>
+<div class="archive-layout">
+  <section class="panel archive-map-panel"><div class="panel-header"><div class="panel-heading"><h2>空间分布地图</h2><p>道路损伤 GPS 坐标分布 · 道路空间分布</p></div><span class="badge badge-info" id="marker-count">0 个有效坐标</span></div><div class="archive-map-wrap"><div id="map-container" class="archive-map roadsense-interactive-map" aria-label="道路损伤真实位置交互地图" hidden></div><div class="archive-map-empty" id="archive-map-empty"><img src="{{ url_for('static',filename='img/archive-aerial-preview.jpg') }}" alt="城市道路立体空间分布概念图，非真实定位数据"><span class="archive-demo-label">城市道路空间可视化 · 视觉示意，非真实坐标</span><div class="archive-map-empty-caption"><strong>暂无检测记录</strong><span>开始道路巡检并上传损伤记录后，地图将在这里标记具体位置</span></div></div></div><div class="map-caption"><span>实时地图可缩放、切换底图，点击标记查看损伤详情</span><div class="map-legend"><span class="legend-item"><i class="legend-dot"></i>轻微</span><span class="legend-item"><i class="legend-dot orange"></i>中度</span><span class="legend-item"><i class="legend-dot red"></i>严重</span></div></div></section>
+  <section class="archive-list" id="records-container" aria-live="polite"><div class="archive-empty"><svg class="icon"><use href="#i-clock"/></svg><strong>记录加载中</strong><span>正在获取云端检测档案...</span></div></section>
+</div>
+{% endblock %}
+{% block page_scripts %}<script src="{{ url_for('static', filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static', filename='js/severe.js') }}" defer></script>{% endblock %}

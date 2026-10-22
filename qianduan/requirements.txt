@@ -1,0 +1,5 @@
+Flask>=2.3,<4
+requests>=2.31,<3
+qrcode[pil]>=7.4,<9
+
+cryptography>=42,<49  # create local CA / HTTPS certificate for phone GPS

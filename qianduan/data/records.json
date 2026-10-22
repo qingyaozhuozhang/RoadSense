@@ -1,0 +1,22 @@
+[
+  {
+    "id": "14a1da0f-977d-40c4-bbff-eb5c370e66a9",
+    "time": "2026-10-21 22:38:41",
+    "lon": 87.730349,
+    "lat": 43.847355,
+    "level": "轻微",
+    "image": null,
+    "session_id": "Task_20261021_223833",
+    "location_source": "phone"
+  },
+  {
+    "id": "a810279e-0b91-43b4-94f4-a1ea7f99fd5d",
+    "time": "2026-10-22 14:40:01",
+    "lon": 87.738249,
+    "lat": 43.842628,
+    "level": "中度",
+    "image": "中度_20261022_144001_4c256747.jpg",
+    "session_id": "Task_20261022_143959",
+    "location_source": "phone"
+  }
+]

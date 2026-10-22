@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% set active_page = 'gps' %}
+{% block title %}高德地图独立测试{% endblock %}
+{% block breadcrumb %}高德地图配置测试{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">AMAP INTEGRATION TEST</p><h1 class="page-title">高德地图接入测试</h1>
+<p class="page-description">不需要 GPS 模块、不需要手机上报，直接验证 Web端(JS API) Key、动态底图与损伤标记。</p></div></section>
+<section class="panel" style="padding:20px"><div class="hint-box" style="margin-bottom:16px">这是演示地图，示例位置为北京天安门附近（WGS84）。页面中的标记均为模拟数据，不会写入损伤记录。</div>
+<div id="demo-map" class="roadsense-interactive-map" style="position:relative;height:560px;max-height:70vh;border-radius:16px;border:1px solid #dbe8f4" aria-label="高德交互地图演示"></div>
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:15px"><button type="button" class="btn btn-primary" id="map-demo-center">查看示例当前位置</button><button type="button" class="btn btn-light" id="map-demo-points">测试损伤标记</button><a class="btn btn-light" href="/api/amap_check" target="_blank" rel="noopener">检查地图配置</a></div>
+<p style="color:#7186a4;margin-top:13px;font-size:13px">如果地图空白，请先打开 /api/amap_check，确认两个字段均为 true。再打开浏览器开发者工具 Console 查看高德的具体错误。</p></section>
+{% endblock %}
+{% block page_scripts %}<script src="{{ url_for('static',filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static',filename='js/amap_demo.js') }}" defer></script>{% endblock %}

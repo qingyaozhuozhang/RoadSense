@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active_page = 'home' %}
+{% block title %}概览仪表盘{% endblock %}
+{% block breadcrumb %}概览仪表盘{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div><p class="eyebrow">OVERVIEW DASHBOARD</p><h1 class="page-title">道路巡检总览</h1><p class="page-description">实时掌握边缘设备状态、巡检任务与道路损伤检测情况</p></div>
+  <div class="page-heading-actions"><span class="badge badge-neutral" id="overview-device-badge">等待设备数据</span><a href="/detection" class="btn btn-primary"><svg class="icon"><use href="#i-camera"/></svg>进入实时监控</a></div>
+</section>
+<section class="hero" aria-label="智能巡检控制中心">
+  <div><div class="hero-tag"><span class="pulse-dot"></span> ROAD INSPECTION · AI ENABLED</div><h2>让每一段道路，都有迹可循。</h2><p>基于边缘 AI 视觉识别与 GPS 空间定位，打通前端巡检、实时监控和云端损伤档案，实现道路巡检全流程可视化。</p><div class="hero-actions"><a href="/detection" class="btn btn-primary">开始巡检管理 <svg class="icon"><use href="#i-arrow"/></svg></a><a href="/severe" class="btn btn-outline-white">查看损伤档案</a></div></div>
+  <div class="hero-art" aria-hidden="true"><div class="hero-orbit"></div><div class="hero-symbol"><svg class="icon"><use href="#i-road"/></svg></div><span class="hero-mini top">AI · VISION</span><span class="hero-mini bottom">GPS · TRACKING</span></div>
+</section>
+<section class="stats-grid" aria-label="巡检数据统计">
+  <article class="stat-card"><div><span class="stat-label">累计检测记录</span><strong class="stat-value" id="stat-total">--</strong><span class="stat-foot">全部历史检测结果</span></div><div class="stat-icon blue"><svg class="icon"><use href="#i-layers"/></svg></div></article>
+  <article class="stat-card"><div><span class="stat-label">严重损伤</span><strong class="stat-value" id="stat-severe">--</strong><span class="stat-foot">需要重点排查</span></div><div class="stat-icon red"><svg class="icon"><use href="#i-alert"/></svg></div></article>
+  <article class="stat-card"><div><span class="stat-label">中度损伤</span><strong class="stat-value" id="stat-moderate">--</strong><span class="stat-foot">建议持续跟踪</span></div><div class="stat-icon amber"><svg class="icon"><use href="#i-trending"/></svg></div></article>
+  <article class="stat-card"><div><span class="stat-label">历史巡检批次</span><strong class="stat-value" id="stat-sessions">--</strong><span class="stat-foot">按任务编号归档</span></div><div class="stat-icon purple"><svg class="icon"><use href="#i-grid"/></svg></div></article>
+</section>
+<div class="two-column" style="margin-bottom:20px">
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>损伤等级分布</h2><p>根据历史检测记录实时汇总</p></div><span class="badge badge-info" id="distribution-count">数据同步中</span></div><div class="panel-divider"></div><div class="severity-graphic">
+    <div class="severity-row"><span class="severity-label">轻微损伤</span><div class="severity-track"><div class="severity-fill mild" id="severity-mild-bar"></div></div><strong class="severity-number" id="severity-mild-count">--</strong></div>
+    <div class="severity-row"><span class="severity-label">中度损伤</span><div class="severity-track"><div class="severity-fill moderate" id="severity-moderate-bar"></div></div><strong class="severity-number" id="severity-moderate-count">--</strong></div>
+    <div class="severity-row"><span class="severity-label">严重损伤</span><div class="severity-track"><div class="severity-fill severe" id="severity-severe-bar"></div></div><strong class="severity-number" id="severity-severe-count">--</strong></div>
+    <div class="chart-caption"><span>统计口径：<b>全部已上报记录</b></span><span>数据来源：<b>云端巡检档案</b></span></div>
+  </div></section>
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>实时系统状态</h2><p>云端服务与设备任务状态</p></div><svg class="icon" style="color:#8ea7c2"><use href="#i-wifi"/></svg></div><div class="panel-divider"></div><div class="status-list">
+    <div class="status-line"><span class="status-name"><svg class="icon"><use href="#i-wifi"/></svg>边缘设备连接</span><span id="overview-connection" class="badge badge-neutral">连接中</span></div>
+    <div class="status-line"><span class="status-name"><svg class="icon"><use href="#i-zap"/></svg>当前运行模式</span><strong id="overview-command">--</strong></div>
+    <div class="status-line"><span class="status-name"><svg class="icon"><use href="#i-layers"/></svg>当前巡检任务</span><strong class="mono" id="overview-session">--</strong></div>
+    <div class="status-line"><span class="status-name"><svg class="icon"><use href="#i-clock"/></svg>最近记录时间</span><strong id="overview-lasttime">--</strong></div>
+  </div></section>
+</div>
+<div class="two-column">
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>最近检测记录</h2><p>最新上报的道路损伤事件</p></div><a class="subtle-link" href="/severe">查看全部 <svg class="icon icon-xs"><use href="#i-arrow"/></svg></a></div><div class="table-scroll"><table class="data-table"><thead><tr><th>记录时间</th><th>损伤等级</th><th>任务批次</th><th>坐标 (经度 / 纬度)</th></tr></thead><tbody id="recent-records"><tr><td colspan="4" class="table-empty">加载记录中...</td></tr></tbody></table></div></section>
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>快捷操作</h2><p>从工作台直接进入常用功能</p></div></div><div class="quick-actions">
+    <a href="/detection" class="quick-link"><span class="stat-icon blue"><svg class="icon"><use href="#i-camera"/></svg></span><span><strong>实时视觉监控</strong><small>查看视频、地图并下发控制指令</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
+    <a href="/severe" class="quick-link"><span class="stat-icon amber"><svg class="icon"><use href="#i-layers"/></svg></span><span><strong>查看损伤档案</strong><small>分类筛选、地图定位与 CSV 导出</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
+    <a href="/gps" class="quick-link"><span class="stat-icon purple"><svg class="icon"><use href="#i-location"/></svg></span><span><strong>GPS 辅助定位</strong><small>手机定位上报与树莓派副驾连接</small></span><svg class="icon icon-sm"><use href="#i-chevron"/></svg></a>
+  </div></section>
+</div>
+{% endblock %}
+{% block page_scripts %}<script src="{{ url_for('static', filename='js/home.js') }}" defer></script>{% endblock %}

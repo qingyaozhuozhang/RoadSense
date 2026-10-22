@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% set active_page = 'gps' %}
+{% block title %}GPS模块定位{% endblock %}
+{% block breadcrumb %}GPS模块定位{% endblock %}
+{% block content %}
+<section class="page-heading"><div><p class="eyebrow">HARDWARE GPS · POSITION MONITOR</p><h1 class="page-title">GPS模块定位</h1><p class="page-description">树莓派 GPS 硬件模块优先，信号失效后自动使用手机备用定位；地图与实时检测页共用同一位置数据</p></div><div class="page-heading-actions"><span class="badge badge-neutral" id="gps-module-badge">正在读取定位...</span><a class="btn btn-light" href="/location"><svg class="icon"><use href="#i-crosshair"/></svg>手机节点定位</a></div></section>
+<div class="gps-banner"><span class="gps-symbol"><svg class="icon"><use href="#i-location"/></svg></span><div><h2>自动选择最可靠的有效位置源</h2><p>硬件模块 5 秒内有新定位时始终优先；超过 5 秒无有效定位则切换到最近 30 秒内更新的手机数据。两个位置源均过期时显示“无可用定位”。</p></div><span class="gps-current-pill" id="gps-active-source">检测中</span></div>
+<div class="gps-map-grid">
+  <section class="panel monitor-card">
+    <div class="panel-header"><div class="panel-heading"><h2>实时位置地图</h2><p>与实时检测页使用相同的定位数据和地图组件</p></div><span class="badge badge-neutral" id="gps-map-state">等待经纬度</span></div>
+    <div class="view-shell map-shell gps-map-view"><div class="live-map roadsense-interactive-map" id="gps-live-map" aria-label="GPS 实时地图"></div><div class="view-overlay" id="gps-map-waiting" style="background:#edf3f8"><svg class="icon" style="color:#6989b2"><use href="#i-map"/></svg><strong style="color:#405a7c">等待有效定位</strong><span id="gps-map-message">当 GPS 模块或手机提供有效经纬度后，地图将自动展示</span></div></div>
+    <div class="view-footer"><span>位置源：<strong id="gps-map-source">--</strong></span><span>地图刷新：位置变化时更新</span></div>
+  </section>
+  <div class="stack">
+    <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>当前使用的经纬度</h2><p>有效定位数据 · WGS84</p></div><span class="badge badge-neutral" id="gps-active-badge">--</span></div>
+      <div class="coordinate-boxes gps-coord-large"><div class="coord-box"><span>经度 LONGITUDE</span><strong id="gps-active-lon">--.------</strong></div><div class="coord-box"><span>纬度 LATITUDE</span><strong id="gps-active-lat">--.------</strong></div></div>
+      <div class="gps-actions"><button type="button" class="btn btn-light" id="gps-copy-active" disabled><svg class="icon"><use href="#i-copy"/></svg>复制当前坐标</button><button type="button" class="btn btn-light" id="gps-refresh"><svg class="icon"><use href="#i-refresh"/></svg>刷新状态</button></div>
+    </section>
+    <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>数据源优先级</h2><p>分别显示模块与手机的最近一次上报</p></div></div><div class="gps-source-list">
+      <div class="gps-source-entry"><div class="gps-source-title"><span class="gps-source-icon">01</span><strong>硬件 GPS 模块</strong><span class="badge badge-neutral" id="gps-hw-status">无数据</span></div><div class="gps-source-coord mono" id="gps-hw-coords">-- / --</div><p id="gps-hw-detail">优先级最高 · 有效期 5 秒</p></div>
+      <div class="gps-source-entry"><div class="gps-source-title"><span class="gps-source-icon secondary">02</span><strong>手机节点定位</strong><span class="badge badge-neutral" id="gps-phone-status">无数据</span></div><div class="gps-source-coord mono" id="gps-phone-coords">-- / --</div><p id="gps-phone-detail">备用数据 · 有效期 30 秒</p></div>
+    </div></section>
+  </div>
+</div>
+<div class="monitor-bottom gps-note-grid">
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>实时切换说明</h2><p>无需手动切换</p></div></div><div class="monitor-tip"><div class="hint-box"><svg class="icon"><use href="#i-info"/></svg><span>模块和手机同时在线时使用模块坐标；拔掉 GPS 模块或模块失去有效定位约 5 秒后，若手机持续同步，则自动切换为手机。模块恢复后自动切回模块。地图与巡检记录使用相同的有效定位源。</span></div></div></section>
+  <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>使用前提</h2><p>硬件与网络检查</p></div></div><div class="step-list"><div class="step"><span class="step-number">01</span><div><strong>树莓派串口 GPS</strong><p>确认 GPS_PORT、GPS_BAUD 和 RMC 有效定位，启动 core.py。</p></div></div><div class="step"><span class="step-number">02</span><div><strong>手机备用定位</strong><p>先在电脑进入“手机节点定位”查看接收状态，再用手机 HTTPS 打开 /phone 采集上报位置。</p></div></div></div></section>
+</div>
+{% endblock %}
+
+{% block page_scripts %}<script src="{{ url_for('static', filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static', filename='js/gps_module.js') }}" defer></script>{% endblock %}

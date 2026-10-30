@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# Per owner request: .env and snapshot SQLite/photos are not excluded.
+*.sqlite3-wal
+*.sqlite3-shm

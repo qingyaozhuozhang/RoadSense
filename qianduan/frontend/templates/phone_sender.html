@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#071c36"><title>RoadSense · 手机节点定位</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#071c36"><meta name="csrf-token" content="{{ csrf_token if csrf_token is defined else '' }}"><title>RoadSense · 手机节点定位</title>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static',filename='img/roadsense-mark.svg') }}">
 <link rel="stylesheet" href="{{ url_for('static',filename='css/mobile_sender.css') }}"></head>
 <body class="mobile-sender"><main class="mobile-sender-shell">
@@ -10,5 +10,29 @@
 <div class="sender-actions"><button id="sender-start" type="button">◉　开始定位并上报</button><button id="sender-stop" type="button" disabled>停止上报</button></div></section>
 <section class="sender-card sender-map-card"><div class="sender-card-title"><div><span class="sender-kicker">02 / LOCATION VIEW</span><h2>实时位置地图</h2></div><span class="sender-provider">高德街道地图 · WGS84→GCJ-02</span></div><div class="sender-map-frame"><div id="sender-map" class="mobile-map roadsense-interactive-map"></div><div id="sender-map-await" class="sender-map-await"><span>⌖</span><strong>等待手机获取有效位置</strong><small>点击开始上报后，自动加载交互式街道地图</small></div><div class="sender-map-grid" aria-hidden="true"></div></div><p class="sender-map-note">道路地图随位置实时更新</p></section>
 <section class="sender-card sender-details"><div class="sender-card-title"><div><span class="sender-kicker">03 / CONNECTION STATUS</span><h2>传输状态</h2></div><span class="sender-pill">LIVE DATA</span></div><div class="sender-metrics"><div><span>云端接收结果</span><strong id="sender-result">尚未上报</strong></div><div><span>最后上报</span><strong id="sender-last">--</strong></div><div><span>系统使用定位源</span><strong id="sender-source">--</strong></div></div></section>
-<footer class="sender-footer"><span>RoadSense · 道路损伤智能巡检</span><small>定位数据仅在你启动后持续上传 · 请将页面保持在前台</small></footer></main>
-<script src="{{ url_for('static',filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static',filename='js/phone_sender.js') }}" defer></script></body></html>
+<section class="sender-card sender-photo-card" id="sender-photo-section" aria-labelledby="sender-photo-title">
+  <div class="sender-card-title"><div><span class="sender-kicker">04 / AI ROAD INSPECTION</span><h2 id="sender-photo-title">道路拍照智能识别</h2></div><span class="sender-pill">YOLO · 云端识别</span></div>
+  <p class="sender-photo-intro">拍照或选择照片后，自动进行云端 YOLO 识别并显示标注结果；确认需要留档时再点击“确认归档”。未确认的识别不会出现在正式巡检档案中。</p>
+  <div class="sender-photo-frame">
+    <div id="sender-photo-placeholder"><span class="sender-photo-camera">◎</span><strong>拍摄路面，AI 辅助分析</strong><small>支持后置相机拍照，也可以上传相册中的照片</small></div>
+    <img id="sender-photo-preview" alt="待识别的道路照片" hidden>
+  </div>
+  <div class="sender-photo-actions">
+    <label for="sender-camera-input">📷 拍摄道路照片</label>
+    <label class="sender-photo-secondary" for="sender-album-input">▧ 从相册选择</label>
+    <input type="file" accept="image/*" capture="environment" id="sender-camera-input" hidden>
+    <input type="file" accept="image/*" id="sender-album-input" hidden>
+  </div>
+  <p class="sender-photo-filename" id="sender-photo-filename">尚未选择照片（最大 8 MB）</p>
+  <p class="sender-photo-status" id="sender-photo-status" role="status" aria-live="polite">拍照后将自动开始识别，无需再点击识别按钮</p>
+  <div class="sender-photo-result" id="sender-photo-result" hidden>
+    <div class="sender-photo-result-head"><strong>云端识别结果</strong><span id="sender-photo-level">--</span></div>
+    <img id="sender-photo-annotated" alt="道路损伤 YOLO 标注结果" hidden>
+    <div class="sender-photo-stats"><div><small>检测目标</small><strong id="sender-photo-count">--</strong></div><div><small>损伤面积占比</small><strong id="sender-photo-ratio">--</strong></div></div>
+    <div class="sender-photo-detections" id="sender-photo-detections"></div>
+    <button type="button" class="sender-photo-submit" id="sender-photo-submit" hidden disabled>✓ 确认归档到云端</button>
+    <p class="sender-photo-archived" id="sender-photo-archived" hidden>✓ 已确认归档，巡检记录现已保存至阿里云</p>
+  </div>
+</section>
+<footer class="sender-footer"><span>RoadSense · 道路损伤智能巡检</span><small>目标每 0.5 秒同步位置 · Android App 支持前台定位服务</small></footer></main>
+<script src="{{ url_for('static',filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static',filename='js/phone_sender.js',v='20261027-2hz') }}" defer></script><script src="{{ url_for('static',filename='js/mobile_photo.js',v='20261027-auto-confirm') }}" defer></script></body></html>

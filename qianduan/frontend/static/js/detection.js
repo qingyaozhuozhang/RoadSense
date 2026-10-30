@@ -45,6 +45,10 @@
   // is unavailable (different machine, firewall, HTTPS mixed-content), fall back
   // to the original /video_feed stream without reloading the entire page.
   function connectVideo(url){
+    const deviceId = new URLSearchParams(window.location.search).get('device_id');
+    if(deviceId && url.startsWith('/video_feed')){
+      const u=new URL(url,location.origin);u.searchParams.set('device_id',deviceId);url=u.pathname+u.search;
+    }
     if(videoConnected && currentVideoUrl===url)return;
     const el=$('video-stream');
     videoConnected=true;currentVideoUrl=url;
@@ -67,15 +71,20 @@
       const status=await window.roadSenseFetch('/api/video_status');
       const available=Boolean(status.available)&&status.camera_signal!=='dark'&&status.camera_signal!=='missing';
       const dark=Boolean(status.available)&&status.camera_signal==='dark';
-      const direct=(window.location.protocol==='http:' && Date.now()>directRetryAfter)
-        ? String(status.direct_video_url||'') : '';
+      // A cloud page must never use an edge-reported 127.0.0.1 LAN preview:
+      // that hostname points to the visitor's own computer, not the camera.
+      const reportedDirect=String(status.direct_video_url||'');
+      let sameHostDirect=false;
+      try{sameHostDirect=new URL(reportedDirect).hostname===window.location.hostname;}catch(_){}
+      const direct=(window.location.protocol==='http:' && sameHostDirect && Date.now()>directRetryAfter)
+        ? reportedDirect : '';
       const liveMode=direct ? '局域网低延时直连' : '云端 MJPEG';
       $('offline-mask').hidden=available;
       $('video-state').textContent=available?`摄像头 ${status.camera_index??'?'} · ${liveMode}`:
         (dark?'摄像头画面过暗 · 请检查镜头/设备':(status.device_online?'设备在线 · 摄像头暂无有效画面':'等待边缘设备摄像头'));
       $('video-label').textContent=available?`CAM ${String(status.camera_index??'?').padStart(2,'0')} · LIVE`:'摄像头 · 等待连接';
       $('video-connection').textContent=available?
-        `${liveMode} · 摄像头 ${Number(status.camera_capture_fps||0).toFixed(1)} / 编码 ${Number(status.preview_render_fps||0).toFixed(1)} / 云端 ${Number(status.video_fps||0).toFixed(1)} FPS`:
+        `${liveMode} · 采集 ${Number(status.camera_capture_fps||0).toFixed(1)} / 编码 ${Number(status.preview_render_fps||0).toFixed(1)} / 接收 ${Number(status.video_fps||0).toFixed(1)} FPS（2秒统计）`:
         (dark?`摄像头 ${status.camera_index??'?'} 原始亮度异常`:(status.camera_signal==='missing'?'没有检测到摄像头 · 请检查 0/1/2':'等待有效视频'));
       $('video-state').className=`badge badge-${available?'success':'neutral'}`;
       if(!available){

@@ -2,37 +2,8 @@
   'use strict';
   const $=id=>document.getElementById(id);
   const map=window.createRoadSenseMap('phone-location-map',{source:'phone'});
-  let loading=false,entryUrl='',qrObjectUrl=null;
-  const fmt=x=>Number.isFinite(x)?x.toFixed(6):'--.------';
-  function statusMessage(msg){$('phone-qr-loading').textContent=msg;$('phone-qr-loading').hidden=false;}
-  async function configureEntry(){
-    try {
-      const links=await window.roadSenseFetch('/api/mobile_access');
-      entryUrl=links.entry_url||'';
-      const link=$('phone-upload-link');link.textContent=entryUrl||'未找到可供手机访问的网址';
-      if(entryUrl)link.href=entryUrl; else link.removeAttribute('href');
-      $('copy-phone-link').disabled=!entryUrl;
-      $('phone-entry-type').textContent=links.entry_kind==='pi'?'定位节点 HTTPS':links.entry_kind==='public'?'公网 HTTPS':'本地网络';
-      $('phone-access-tip').textContent=links.hint||'手机和服务端必须网络互通。';
-      if(!entryUrl){statusMessage('手机入口暂不可用，请确认定位节点连接');return;}
-      const res=await fetch('/api/mobile_qr',{cache:'no-store'});
-      if(!res.ok){let detail=await res.json().catch(()=>({}));throw new Error(detail.message||'HTTP '+res.status);}
-      const type=res.headers.get('content-type')||'';
-      if(!type.includes('image/'))throw new Error('服务器未返回二维码图像');
-      const url=URL.createObjectURL(await res.blob());
-      const qr=$('phone-entry-qr');
-      if(qrObjectUrl)URL.revokeObjectURL(qrObjectUrl);qrObjectUrl=url;
-      qr.onload=()=>{$('phone-qr-loading').hidden=true;qr.hidden=false;};
-      qr.onerror=()=>{qr.hidden=true;statusMessage('二维码图片无法解析，请检查 Flask 日志');};
-      qr.src=url;
-    }catch(error){statusMessage('二维码生成失败：'+(error.message||error));}
-  }
-  $('copy-phone-link').addEventListener('click',async()=>{
-    if(!entryUrl)return;
-    try{await navigator.clipboard.writeText(entryUrl);window.roadSenseToast('已复制手机入口地址','success');}
-    catch(_){window.roadSenseToast('请长按或选中网址进行复制');}
-  });
-  configureEntry();
+  let loading = false;
+  const fmt = x => Number.isFinite(x) ? x.toFixed(6) : '--.------';
   async function poll(){
     if(loading||document.hidden)return;loading=true;
     try {
@@ -42,7 +13,7 @@
       $('phone-recv-badge').className=`badge badge-${valid?'success':'neutral'}`;
       $('phone-source-status').textContent=valid?'有效上报':'未收到有效上报';
       $('phone-received-status').textContent=valid?'正在接收手机上传的坐标':'尚未收到有效手机坐标';
-      $('phone-received-note').textContent=valid?'手机坐标已到达云端；GPS 模块有效时仍优先使用模块位置':'请在手机打开二维码或网址，开始上报手机定位';
+      $('phone-received-note').textContent=valid?'手机坐标已到达云端；GPS 模块有效时仍优先使用模块位置':'请在 RoadSense Android App 内点击开始定位上报';
       $('phone-signal-disc').classList.toggle('is-live',valid);
       $('phone-recv-lon').textContent=valid?fmt(phone.longitude):'--.------';
       $('phone-recv-lat').textContent=valid?fmt(phone.latitude):'--.------';

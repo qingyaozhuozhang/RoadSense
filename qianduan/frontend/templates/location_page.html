@@ -9,17 +9,12 @@
   <section class="panel monitor-card"><div class="panel-header"><div class="panel-heading"><h2>手机上报的实时位置地图</h2><p>手机位置实时更新</p></div><span class="badge badge-neutral" id="phone-map-state">等待位置</span></div>
   <div class="view-shell map-shell gps-map-view"><div class="live-map roadsense-interactive-map" id="phone-location-map" aria-label="手机节点经纬度高德道路地图"></div><div class="view-overlay map-await" id="phone-map-waiting"><svg class="icon"><use href="#i-map"/></svg><strong>等待手机上传定位数据</strong><span>位置上传成功后自动显示</span></div></div><div class="view-footer"><span>实时位置 · 城市道路地图</span><span id="phone-map-coords">-- / --</span></div></section>
   <div class="stack"><section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机定位接收状态</h2><p>实时连接状态</p></div><span class="badge badge-neutral" id="phone-source-status">未接入</span></div>
-    <div class="gps-status-big"><span class="signal-disc" id="phone-signal-disc"><svg class="icon"><use href="#i-crosshair"/></svg></span><div><strong id="phone-received-status">尚未收到定位上报</strong><p id="phone-received-note">请在手机上打开采集页面并保持上报</p></div></div>
+    <div class="gps-status-big"><span class="signal-disc" id="phone-signal-disc"><svg class="icon"><use href="#i-crosshair"/></svg></span><div><strong id="phone-received-status">尚未收到定位上报</strong><p id="phone-received-note">请在 RoadSense Android App 内启动位置上报</p></div></div>
     <div class="coordinate-boxes"><div class="coord-box"><span>手机经度 LONGITUDE</span><strong id="phone-recv-lon">--.------</strong></div><div class="coord-box"><span>手机纬度 LATITUDE</span><strong id="phone-recv-lat">--.------</strong></div></div>
     <div class="status-detail"><dl><dt>最后上报时间</dt><dd id="phone-last-received">--</dd></dl><dl><dt>距离上次上报</dt><dd id="phone-fix-age">--</dd></dl><dl><dt>上报有效性</dt><dd id="phone-validity">等待手机</dd></dl></div></section>
-    <section class="panel"><div class="panel-header"><div class="panel-heading"><h2>手机端采集入口</h2><p>扫码进入，也可复制链接访问</p></div><span class="badge badge-info" id="phone-entry-type">正在识别入口</span></div>
-      <div class="phone-link-panel phone-entry-simple">
-        <div class="phone-entry-url-title"><span>方式一 · 手机输入网址</span><button class="btn btn-light" id="copy-phone-link" type="button">复制地址</button></div>
-        <a id="phone-upload-link" class="phone-upload-url" href="/phone" target="_blank" rel="noopener noreferrer">正在查找手机可访问的地址…</a>
-        <div class="phone-entry-qr-head">方式二 · 使用手机扫码</div>
-        <div class="phone-qr-image-frame phone-qr-minimal"><img id="phone-entry-qr" alt="手机定位入口二维码" width="210" height="210" hidden><span id="phone-qr-loading">正在生成二维码…</span></div>
-        <p class="phone-entry-hint" id="phone-access-tip">打开地址后点击“开始定位”，即可同步位置。</p>
-      </div>
+    <section class="panel phone-native-receiver"><div class="panel-header"><div class="panel-heading"><h2>Android 手机节点</h2><p>由 RoadSense App 主动采集并上传</p></div><span class="badge badge-info">APP DIRECT</span></div>
+      <div class="native-receiver-info"><div class="native-receiver-symbol"><svg class="icon"><use href="#i-road"/></svg></div><div><strong>位置接收模式</strong><p>本页面只显示 Android App 发送到云端的实时经纬度。请直接在手机打开 RoadSense App，登录后点击「开始定位上报」。无需扫码或填写网址。</p></div></div>
+      <div class="status-detail"><dl><dt>接入方式</dt><dd>Android 原生高德定位</dd></dl><dl><dt>发送间隔</dt><dd>目标 0.5 秒</dd></dl><dl><dt>定位优先级</dt><dd>硬件 GPS 优先 · 手机备用</dd></dl></div>
     </section></div>
 </div>
 {% endblock %}

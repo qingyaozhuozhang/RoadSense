@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08192d">
+  <title>{{ '创建账号' if mode == 'register' else '账号登录' }} · 道路智能巡检平台</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/roadsense-mark.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/auth-redesign.css', v='20261027-http1') }}">
+</head>
+<body>
+  <div class="auth-layout">
+    <aside class="auth-showcase">
+      <div class="auth-grid"></div>
+      <div class="auth-brand-wrap">
+        <a class="auth-brand" href="/login">
+          <span class="auth-brand-icon"><img src="{{ url_for('static',filename='img/roadsense-mark.svg') }}" alt=""></span>
+          <span class="auth-brand-lockup"><span>ROAD<strong>SENSE</strong></span><small>INTELLIGENT ROAD INSPECTION</small></span>
+        </a>
+        <div class="auth-brand-caption">AI · 视觉感知 · 道路数字化巡检</div>
+      </div>
+      <div class="showcase-copy">
+        <span class="auth-eyebrow"><i></i> EDGE INTELLIGENCE <b>/</b> CLOUD INSPECTION</span>
+        <h1>看见每一道裂痕，<br><em>守护每一段道路。</em></h1>
+        <p>从边缘摄像头到移动端辅助拍照，连接视觉识别、实时定位和云端巡检档案。</p>
+        <div class="auth-features">
+          <span><b>01</b> 实时道路巡检</span>
+          <span><b>02</b> 云端 AI 识别</span>
+          <span><b>03</b> 多终端数据归档</span>
+        </div>
+      </div>
+      <div class="showcase-footer"><span>ROADSENSE / SECURE WORKSPACE</span><span>© 2026</span></div>
+    </aside>
+    <main class="auth-panel">
+      <div class="panel-inner">
+        <div class="mobile-brand"><img src="{{ url_for('static',filename='img/roadsense-mark.svg') }}" alt=""> ROADSENSE</div>
+        <div class="auth-card-overline"><div class="auth-topline"><span>安全访问</span><span class="topline-dot"></span><span>云端工作台</span></div><span class="auth-card-edition">RS / 2026</span></div>
+        <h2>{{ '创建新账号' if mode == 'register' else '道路智能巡检平台' }}</h2>
+        <p class="auth-intro">{{ '完成账号注册后，即可使用智能巡检及手机辅助拍照识别。' if mode == 'register' else '使用账号密码登录，进入道路智能巡检工作台。' }}</p>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="auth-alert auth-alert-{{ 'success' if category == 'success' else 'error' }}" role="{{ 'status' if category == 'success' else 'alert' }}" aria-live="{{ 'polite' if category == 'success' else 'assertive' }}">
+              <span class="auth-alert-icon" aria-hidden="true">{{ '✓' if category == 'success' else '!' }}</span><span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        {% endwith %}
+        <form id="account-form" class="auth-form" method="post" action="{{ '/register' if mode == 'register' else '/login' }}" autocomplete="on">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <label for="username">用户名</label>
+          {% if mode == 'register' %}
+          <input id="username" name="username" type="text" required autofocus autocomplete="username"
+                 minlength="4" maxlength="32" pattern="[A-Za-z][A-Za-z0-9_]{3,31}"
+                 title="普通用户账号须以字母开头，长度 4–32 位，仅允许字母、数字及下划线" placeholder="请输入注册用户名">
+          <p class="field-hint">普通用户：4–32 位，字母开头，可包含数字和下划线</p>
+          {% else %}
+          <input id="username" name="username" type="text" required autofocus autocomplete="username"
+                 maxlength="64" placeholder="请输入管理员或普通用户账号">
+          <p class="field-hint">支持数字管理员账号和普通用户账号</p>
+          {% endif %}
+          <label for="password">密码</label>
+          <div class="password-control">
+            <input id="password" name="password" type="password" required minlength="{{ '8' if mode == 'register' else '1' }}"
+                   maxlength="128" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" placeholder="请输入密码">
+            <button type="button" id="toggle-password" aria-label="显示密码">显示</button>
+          </div>
+          {% if mode == 'register' %}
+          <p class="field-hint">至少 8 位，包含字母和数字</p>
+          <label for="password_confirm">再次确认密码</label>
+          <div class="password-control"><input id="password_confirm" name="password_confirm" type="password" minlength="8" maxlength="128" required autocomplete="new-password" placeholder="请再次输入相同密码"></div>
+          {% endif %}
+          <label for="captcha">图形验证码</label>
+          <div class="captcha-control">
+            <input id="captcha" name="captcha" type="text" required minlength="5" maxlength="5"
+                   placeholder="输入图中 5 位字符" autocomplete="off" spellcheck="false">
+            <img id="captcha-image" src="{{ url_for('auth_captcha') }}" alt="5 位图形验证码" width="174" height="54">
+            <button type="button" id="refresh-captcha" aria-label="换一张验证码" title="换一张">↻</button>
+          </div>
+          <p class="field-hint">验证码不区分大小写，点击图片可刷新</p>
+          <button class="submit" type="submit">{{ '立即注册' if mode == 'register' else '登录工作台' }} <span>→</span></button>
+        </form>
+        <div class="auth-switch">
+          {% if mode == 'register' %}已经有账号？<a href="/login">返回登录</a>
+          {% elif registration_enabled %}还没有账号？<a href="{{ url_for('register_page', next=next_url) }}">创建新账号</a>　 <a href="/forgot-password">忘记密码？</a>
+          {% else %}账号注册已关闭，请联系平台管理员。
+          {% endif %}
+        </div>
+        <div class="auth-privacy">账号密码经过加密摘要存储 · 验证码 5 分钟内有效</div>
+      </div>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const image = document.getElementById('captcha-image');
+      const renew = () => { image.src = '/api/auth/captcha?t=' + Date.now(); document.getElementById('captcha').value = ''; };
+      document.getElementById('refresh-captcha').addEventListener('click', renew);
+      image.addEventListener('click', renew);
+      const form = document.getElementById('account-form');
+      if (form && document.getElementById('password_confirm')) form.addEventListener('submit', (event) => {
+        if (document.getElementById('password').value !== document.getElementById('password_confirm').value) {
+          event.preventDefault(); document.getElementById('password_confirm').setCustomValidity('两次输入的密码不一致');
+          document.getElementById('password_confirm').reportValidity();
+        }
+      });
+      document.getElementById('password_confirm')?.addEventListener('input', e => e.currentTarget.setCustomValidity(''));
+      document.getElementById('toggle-password').addEventListener('click', (event) => {
+        const field = document.getElementById('password');
+        const show = field.type === 'password';
+        field.type = show ? 'text' : 'password';
+        event.currentTarget.textContent = show ? '隐藏' : '显示';
+      });
+    })();
+  </script>
+</body>
+</html>

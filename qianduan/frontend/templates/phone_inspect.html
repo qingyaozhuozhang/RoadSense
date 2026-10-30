@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08192d">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>手机辅助拍照识别 · RoadSense</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static',filename='img/roadsense-mark.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static',filename='css/phone_inspect.css') }}">
+</head>
+<body>
+  <header class="photo-topbar">
+    <a class="photo-brand" href="/"><img src="{{ url_for('static',filename='img/roadsense-mark.svg') }}" alt=""> ROAD<span>SENSE</span></a>
+    <nav><a href="/">工作台</a><a href="/severe">巡检档案</a><span class="photo-username">{{ current_user.username if current_user else '访客' }}</span></nav>
+  </header>
+  <main class="photo-main">
+    <div class="photo-heading">
+      <span class="eyebrow"><i></i> MOBILE ASSISTED INSPECTION</span>
+      <h1>手机辅助拍照识别</h1>
+      <p>拍摄路面，上传云端 YOLO 模型，识别道路损伤并自动保存巡检档案。</p>
+    </div>
+    <section class="photo-card" aria-labelledby="photo-upload-title">
+      <div class="section-heading"><div><span>01 / IMAGE INPUT</span><h2 id="photo-upload-title">上传待识别道路照片</h2></div><b class="pill">YOLO · ONNX</b></div>
+      <div class="photo-dropzone" id="photo-dropzone">
+        <div class="photo-placeholder" id="photo-placeholder"><span class="camera-sign">◎</span><strong>准备好拍摄路面了吗？</strong><small>可直接打开手机后置摄像头，或从相册选择照片</small></div>
+        <img id="photo-preview" alt="将要识别的道路图片预览" hidden>
+      </div>
+      <div class="photo-actions">
+        <label class="photo-button primary" for="camera-input">📷 拍照识别</label>
+        <label class="photo-button secondary" for="album-input">▧ 从相册选择</label>
+        <input type="file" accept="image/*" capture="environment" id="camera-input" hidden>
+        <input type="file" accept="image/*" id="album-input" hidden>
+      </div>
+      <div class="upload-details"><span id="filename-label">未选择图片</span><span>最大 8 MB · JPG / PNG / WebP</span></div>
+      <div class="gps-line"><label><input id="with-location" type="checkbox" checked> 尝试附带手机 GPS 坐标</label><small>需要 HTTPS 及定位授权；定位失败仍可识别</small></div>
+      <button class="detect-button" id="run-detect" disabled>开始云端 AI 识别 <span>→</span></button>
+      <p class="photo-status" id="photo-status" role="status" aria-live="polite">请选择一张道路照片</p>
+    </section>
+    <section class="photo-card" id="result-card" hidden aria-labelledby="result-title">
+      <div class="section-heading"><div><span>02 / ANALYSIS RESULT</span><h2 id="result-title">YOLO 道路损伤检测结果</h2></div><b class="pill" id="result-severity">--</b></div>
+      <img id="result-photo" class="result-image" alt="YOLO 检测标注后的道路图片">
+      <div class="result-metrics">
+        <div><small>损伤等级</small><strong id="result-level">--</strong></div>
+        <div><small>检测目标</small><strong id="result-count">--</strong></div>
+        <div><small>损伤面积占比</small><strong id="result-ratio">--</strong></div>
+        <div><small>云端推理时间</small><strong id="result-time">--</strong></div>
+      </div>
+      <div class="detection-list" id="result-detections"></div>
+      <p class="saved-note">✓ 已将原图、识别标注图和结果保存到云端巡检档案</p>
+      <a href="/severe" class="archive-link">查看全部道路损伤档案 →</a>
+    </section>
+    <section class="photo-card" aria-labelledby="photo-history-title">
+      <div class="section-heading"><div><span>03 / PERSONAL HISTORY</span><h2 id="photo-history-title">我的最近识别记录</h2></div><button id="reload-history" class="subtle-button">刷新</button></div>
+      <div id="photo-history" class="history-list"><p class="empty-history">正在加载识别历史...</p></div>
+    </section>
+  </main>
+  <footer class="photo-footer">ROADSENSE · EDGE INTELLIGENCE & CLOUD MONITORING</footer>
+  <script src="{{ url_for('static',filename='js/phone_inspect.js') }}" defer></script>
+</body>
+</html>

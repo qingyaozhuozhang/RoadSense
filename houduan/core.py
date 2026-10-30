@@ -7,8 +7,10 @@ import math
 import os
 import threading
 import time
+import uuid
+import concurrent.futures
 from typing import Optional, Tuple
-from location_state import PositionManager
+from location_state import PositionManager, valid_coordinates
 
 import cv2
 import requests
@@ -32,7 +34,7 @@ except ImportError:
 # ⚙️ 第一部分：全局配置区
 # ==========================================
 
-# Optional Pi-specific .env. Prefer exported environment variables when present.
+# Optional edge-device .env. Explicitly exported environment variables take priority.
 from pathlib import Path as _ConfigPath
 _pi_env = _ConfigPath(__file__).resolve().parent / '.env'
 if _pi_env.exists():
@@ -40,7 +42,16 @@ if _pi_env.exists():
         _line = _line.strip()
         if _line and not _line.startswith('#') and '=' in _line:
             _k, _v = _line.split('=', 1)
-            if _k.strip() in {'AMAP_JS_KEY','AMAP_JS_SECRET','CLOUD_BASE_URL','PI_LAN_HOST'}:
+            if _k.strip() in {
+                'AMAP_JS_KEY', 'AMAP_JS_SECRET', 'CLOUD_BASE_URL', 'PI_LAN_HOST',
+                'DEVICE_TOKEN', 'DEVICE_ID', 'CAMERA_INDEX', 'CAMERA_SCAN_INTERVAL',
+                'GPS_PORT', 'GPS_BAUD', 'YOLO_MODEL', 'SAVE_DIR',
+                'ORT_PROVIDER', 'ORT_THREADS', 'VIDEO_RENDER_FPS',
+                'VIDEO_UPLOAD_FPS', 'VIDEO_UPLOAD_CONCURRENCY', 'VIDEO_JPEG_QUALITY', 'VIDEO_OUTPUT_WIDTH',
+                'DIRECT_VIDEO_ENABLED', 'DIRECT_VIDEO_BIND',
+                'DIRECT_VIDEO_PORT', 'DIRECT_VIDEO_PUBLIC_HOST',
+                'PI_SSL_CERT_FILE', 'PI_SSL_KEY_FILE',
+            }:
                 os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
 
 # Default to local server: never accidentally upload test data to production.
@@ -51,7 +62,8 @@ CLOUD_COMMAND_URL = f"{CLOUD_BASE_URL}/api/command"
 REPORT_URL = f"{CLOUD_BASE_URL}/api/report_pi_url"
 PHONE_RELAY_URL = f"{CLOUD_BASE_URL}/api/phone_location"
 DEVICE_TOKEN = os.environ.get('DEVICE_TOKEN','')
-HTTP_HEADERS = {'X-RoadSense-Token': DEVICE_TOKEN} if DEVICE_TOKEN else {}
+DEVICE_ID = os.environ.get('DEVICE_ID','pi-main').strip()
+HTTP_HEADERS = {'X-RoadSense-Token': DEVICE_TOKEN, 'X-RoadSense-Device-ID': DEVICE_ID} if DEVICE_TOKEN else {}
 
 
 HEARTBEAT_INTERVAL = 1.0
@@ -59,6 +71,8 @@ HEARTBEAT_INTERVAL = 1.0
 # A 20-25 FPS browser feed feels far smoother than the previous fixed 8 FPS.
 VIDEO_RENDER_FPS = max(5.0, min(float(os.environ.get('VIDEO_RENDER_FPS', '25')), 40.0))
 VIDEO_UPLOAD_FPS = max(1.0, min(float(os.environ.get('VIDEO_UPLOAD_FPS', '20')), 30.0))
+# Each HTTP POST takes one whole RTT. A small pool avoids the old 5FPS limit.
+VIDEO_UPLOAD_CONCURRENCY = max(1, min(int(os.environ.get('VIDEO_UPLOAD_CONCURRENCY', '4')), 6))
 VIDEO_JPEG_QUALITY = max(30, min(int(os.environ.get('VIDEO_JPEG_QUALITY', '50')), 85))
 VIDEO_OUTPUT_WIDTH = max(320, min(int(os.environ.get('VIDEO_OUTPUT_WIDTH','640')), 1280))
 # Direct preview is a *local-development* fast path; the cloud /video_feed remains available.
@@ -76,7 +90,7 @@ ZONE_RADIUS = 20
 RPI_GPS_PORT = os.environ.get("GPS_PORT", "/dev/ttyUSB0")
 RPI_GPS_BAUD = int(os.environ.get("GPS_BAUD", "9600"))
 RPI_GPS_TIMEOUT = 1.0
-CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "2"))
+CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "0"))
 CAMERA_SCAN_INTERVAL = float(os.environ.get("CAMERA_SCAN_INTERVAL", "5"))
 MODEL_PATH = os.environ.get("YOLO_MODEL", "best.onnx")
 SAVE_DIR = os.environ.get("SAVE_DIR", "severe_cracks")
@@ -108,6 +122,8 @@ current_camera_index: Optional[int] = None
 current_camera_brightness: Optional[float] = None
 current_camera_signal: str = "missing"
 latest_detection_count: int = 0
+latest_detection_event = None  # A fresh inference snapshot captured WITH a valid GPS fix.
+latest_detection_reference = None
 latest_map: Optional[np.ndarray] = None
 
 global_command = "STOP"
@@ -149,23 +165,38 @@ def lonlat_to_pixel(target_lon, target_lat, center_lon, center_lat, zoom, width,
     return int(width / 2 + (tx - cx)), int(height / 2 + (ty - cy))
 
 
-def upload_to_cloud_async(frame: np.ndarray, lon: float, lat: float, severity: int) -> None:
-    def _upload():
-        try:
-            data = {'longitude': lon, 'latitude': lat, 'severity': severity, 'timestamp': time.time(),
-                    'session_id': global_session_id, 'location_source': get_location_source()}
-            if severity >= 2:
-                success, encoded_image = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                if not success: return
-                files = {'image': ('damage.jpg', encoded_image.tobytes(), 'image/jpeg')}
-                requests.post(CLOUD_SERVER_URL, files=files, data=data, headers=HTTP_HEADERS, timeout=5)
-            else:
-                requests.post(CLOUD_SERVER_URL, data=data, headers=HTTP_HEADERS, timeout=5)
-        except Exception:
-            pass
+def upload_to_cloud_sync(frame: np.ndarray, lon: float, lat: float, severity: int,
+                         session_id: str, location_source: str) -> bool:
+    """Upload one geolocated damage frame. A failed upload is NEVER marked archived.
 
-    threading.Thread(target=_upload, daemon=True).start()
-
+    This runs in the archive worker (not the camera or inference threads).
+    """
+    if valid_coordinates(lat, lon) is None or location_source not in ('hardware', 'phone'):
+        return False
+    try:
+        success, encoded_image = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if not success:
+            print('[归档] JPEG 编码失败，未保存', flush=True)
+            return False
+        data = {'longitude': lon, 'latitude': lat, 'severity': severity,
+                'timestamp': time.time(), 'session_id': session_id,
+                'location_source': location_source}
+        files = {'image': ('damage.jpg', encoded_image.tobytes(), 'image/jpeg')}
+        response = requests.post(CLOUD_SERVER_URL, files=files, data=data,
+                                 headers=HTTP_HEADERS, timeout=(2.5, 6.0))
+        if not response.ok:
+            print(f'[归档] 云端拒绝保存 HTTP {response.status_code}: {response.text[:180]}',flush=True)
+            return False
+        body = response.json()
+        if body.get('status') != 'success':
+            print(f'[归档] 云端返回失败：{str(body)[:180]}', flush=True)
+            return False
+        print(f'[归档] 已确认入库：损伤等级={severity}，定位来源={location_source}，'
+              f'经纬度=({lat:.6f},{lon:.6f})', flush=True)
+        return True
+    except (requests.RequestException, ValueError) as exc:
+        print(f'[归档] 网络或响应错误，未入库：{exc}',flush=True)
+        return False
 
 def cleanup_old_records(directory: str, max_files: int = 1000) -> None:
     try:
@@ -196,6 +227,7 @@ class CameraStream:
         self.lock = threading.RLock()
         self.failures = 0
         self.camera_fps = 0.0
+        self.capture_sequence = 0
         self._last_capture_at = 0.0
         self._stop = threading.Event()
         self._next_scan_at = 0.0
@@ -247,6 +279,7 @@ class CameraStream:
                     self.active_index = index
                     self.ret = True
                     self.frame = img
+                    self.capture_sequence += 1
                     self.failures = 0
                 print(f'[摄像头] 已连接序列号 {index}，视频 {img.shape[1]}×{img.shape[0]}，准备上报到 /update_stream', flush=True)
                 return True
@@ -281,6 +314,7 @@ class CameraStream:
                                                0.8*self.camera_fps + 0.2*measured)
                     self._last_capture_at = captured
                     self.ret, self.frame, self.failures = True, img, 0
+                    self.capture_sequence += 1
                 continue
             with self.lock:
                 self.ret, self.frame = False, None
@@ -303,6 +337,13 @@ class CameraStream:
                 return False, None
             return True, self.frame.copy()
 
+    def read_with_sequence(self):
+        """Use this in video encoder to avoid sending the same captured frame twice."""
+        with self.lock:
+            if not self.ret or self.frame is None:
+                return False, None, self.capture_sequence
+            return True, self.frame.copy(), self.capture_sequence
+
     def status(self):
         with self.lock:
             return self.active_index, bool(self.ret and self.frame is not None)
@@ -319,11 +360,17 @@ class YOLO_ONNX_Engine:
     """ONNX YOLOv8 OBB and standard Detect; infer task from model metadata."""
     def __init__(self, onnx_model: str, confidence_thres: float = 0.3, iou_thres: float = 0.5):
         self.confidence_thres = confidence_thres
+        self.nms_max_candidates=max(40,min(400,int(os.environ.get('YOLO_NMS_MAX_CANDIDATES','160'))))
         self.iou_thres = iou_thres
-        provider_choice = os.environ.get('ORT_PROVIDER','cpu').strip().lower()
+        provider_choice = os.environ.get('ORT_PROVIDER','auto').strip().lower()
+        available = ort.get_available_providers()
         providers=['CPUExecutionProvider']
-        if provider_choice == 'cuda' and 'CUDAExecutionProvider' in ort.get_available_providers():
+        if provider_choice in ('auto','cuda') and 'CUDAExecutionProvider' in available:
             providers=['CUDAExecutionProvider','CPUExecutionProvider']
+        elif provider_choice in ('auto','openvino') and 'OpenVINOExecutionProvider' in available:
+            providers=['OpenVINOExecutionProvider','CPUExecutionProvider']
+        elif provider_choice in ('cuda','openvino'):
+            print(f'[推理] 请求的 {provider_choice} 加速器不可用，已回退 CPU；可用执行后端={available}', flush=True)
         opts=ort.SessionOptions()
         opts.log_severity_level=3
         threads=int(os.environ.get('ORT_THREADS',str(max(1,min(2,(os.cpu_count() or 2)-1)))))
@@ -332,8 +379,8 @@ class YOLO_ONNX_Engine:
         try:
             self.session=ort.InferenceSession(onnx_model,sess_options=opts,providers=providers)
         except Exception as exc:
-            if providers[0] != 'CUDAExecutionProvider':raise
-            print('[推理] GPU 初始化失败，回退 CPU:',exc,flush=True)
+            if providers[0] == 'CPUExecutionProvider': raise
+            print('[推理] 硬件加速初始化失败，回退 CPU:',exc,flush=True)
             self.session=ort.InferenceSession(onnx_model,sess_options=opts,providers=['CPUExecutionProvider'])
         md=self.session.get_modelmeta().custom_metadata_map or {}
         self.rotated=str(md.get('task','')).lower()=='obb'
@@ -355,6 +402,8 @@ class YOLO_ONNX_Engine:
         self.model_inputs=self.session.get_inputs()
         self.last_detections=[]
         self.last_infer_ms=0
+        self.last_infer_completed_at=0.0
+        self.inference_counter=0
         print(f'[推理] 模型任务={"OBB旋转检测" if self.rotated else "普通检测"}，类别={self.classes}，'
               f'输出={output_shape}，执行后端={self.session.get_providers()}',flush=True)
 
@@ -376,11 +425,22 @@ class YOLO_ONNX_Engine:
     def predict(self,frame):
         start=time.perf_counter()
         blob,ratio,padding=self.preprocess(frame)
+        t0=time.perf_counter()
         raw=self.session.run(None,{self.model_inputs[0].name:blob})[0]
+        t1=time.perf_counter()
         detections=decode_predictions(raw,self.class_count,self.rotated,ratio,padding,frame.shape[:2],
-                                     self.confidence_thres,self.iou_thres)
+                                     self.confidence_thres,self.iou_thres,max_candidates=self.nms_max_candidates)
+        t2=time.perf_counter()
         self.last_detections=detections
         self.last_infer_ms=(time.perf_counter()-start)*1000
+        self.inference_counter += 1
+        if self.inference_counter % 12 == 0:
+            print(f'[AI耗时] 总计 {self.last_infer_ms:.0f}ms ≈ {1000/max(1,self.last_infer_ms):.1f}帧/秒 '
+                  f'| 预处理 {(t0-start)*1000:.0f}ms '
+                  f'| 模型运行 {(t1-t0)*1000:.0f}ms '
+                  f'| OBB后处理 {(t2-t1)*1000:.0f}ms '
+                  f'| 后端 {self.session.get_providers()[0]}', flush=True)
+        self.last_infer_completed_at=time.monotonic()
         annotated=draw_detections(frame,detections,self.classes)
         area=sum(d['area'] for d in detections)
         fraction=area/max(1,frame.shape[0]*frame.shape[1])
@@ -479,6 +539,8 @@ def run_video_render_loop():
     """
     period = 1.0 / VIDEO_RENDER_FPS
     last_notice = 0.0
+    last_rendered_camera = None
+    last_rendered_seq = -1
     next_tick = time.monotonic()
     while True:
         start = time.monotonic()
@@ -486,18 +548,28 @@ def run_video_render_loop():
             cam = active_camera
             detections = list(latest_detections)
             detected_at = latest_prediction_time
+            detection_ref = None if latest_detection_reference is None else latest_detection_reference.copy()
             inference_ms = latest_infer_ms
             damage_ratio = latest_damage_ratio
             damage_level = latest_damage_level
             command = global_command
-        ok, frame = cam.read() if cam is not None else (False, None)
-        if ok and frame is not None:
+        ok, frame, capture_seq = cam.read_with_sequence() if cam is not None else (False, None, -1)
+        is_new_capture = ok and frame is not None and (
+            cam is not last_rendered_camera or capture_seq != last_rendered_seq)
+        if is_new_capture:
+            last_rendered_camera, last_rendered_seq = cam, capture_seq
             # Never freeze the display while waiting for expensive AI inference.
             # Only overlay detections while they are recent (and AI is running).
+            # The model can take ~900ms on CPU. Avoid painting its old OBBs onto a
+            # substantially different *current* camera image (false localization).
+            visually_same = True
+            if detection_ref is not None:
+                preview_gray=cv2.resize(cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY),(32,24),interpolation=cv2.INTER_AREA)
+                visually_same = float(cv2.absdiff(preview_gray,detection_ref).mean()) <= 23.0
             if (command == 'RUNNING' and detections and detected_at
-                and start - detected_at < 2.0):
+                and start - detected_at < 1.8 and visually_same):
                 frame = draw_detections(frame, detections, getattr(cam, 'class_names', []))
-            if command == 'RUNNING' and detected_at and start-detected_at < 2.0:
+            if command == 'RUNNING' and detected_at and start-detected_at < 1.8 and visually_same:
                 frame = draw_severity_hud(frame,damage_ratio,damage_level)
             h, w = frame.shape[:2]
             if w > VIDEO_OUTPUT_WIDTH:
@@ -507,7 +579,7 @@ def run_video_render_loop():
                              [int(cv2.IMWRITE_JPEG_QUALITY), VIDEO_JPEG_QUALITY])
             if ok_encode:
                 jpeg_hub.put(jpeg.tobytes())
-        elif start-last_notice > 10:
+        elif not ok and start-last_notice > 10:
             print('[视频] 摄像头暂无可用图像，等待自动重连。',flush=True)
             last_notice = start
         next_tick += period
@@ -520,52 +592,89 @@ def run_video_render_loop():
 
 
 def run_video_upload_loop():
-    """Cloud fallback: always post latest encoded JPEG, never wait on inference.
+    """Cloud MJPEG relay: bounded parallel latest-frame HTTP uploads.
 
-    The browser may use the direct preview URL on a trusted LAN; if unavailable,
-    the normal Flask MJPEG relay continues to work with no endpoint changes.
+    Synchronous single POST/frame previously limited receive rate to ~1/RTT
+    (e.g. 180ms RTT -> 5.5 FPS). This pool caps inflight requests, sends only
+    the latest frame at each tick and includes ordering metadata for the cloud.
+    Frames are never queued indefinitely; if all workers are busy, skip a tick.
     """
+    import requests
     period = 1.0 / VIDEO_UPLOAD_FPS
-    session = requests.Session()
+    upload_slots = threading.BoundedSemaphore(VIDEO_UPLOAD_CONCURRENCY)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=VIDEO_UPLOAD_CONCURRENCY,
+                                                  thread_name_prefix='RoadSenseVideo')
+    stream_session = uuid.uuid4().hex
+    thread_local = threading.local()
+    results_lock = threading.Lock()
+    counters = {'ok': 0, 'fail': 0, 'skipped': 0, 'bytes': 0, 'last_report': time.monotonic()}
+    last_error = [0.0]
+
+    def send_one(seq, jpeg, camera_idx, camera_signal):
+        try:
+            session = getattr(thread_local, 'session', None)
+            if session is None:
+                session = requests.Session()
+                thread_local.session = session
+            response = session.post(CLOUD_STREAM_URL,
+                 files={'frame':('live.jpg', jpeg, 'image/jpeg')},
+                 data={'camera_signal':camera_signal,
+                       'camera_index':camera_idx if camera_idx is not None else '',
+                       'video_session': stream_session, 'video_seq':str(seq)},
+                 headers=HTTP_HEADERS, timeout=(1.5, 3.0))
+            with results_lock:
+                if response.status_code == 200:
+                    counters['ok'] += 1
+                    counters['bytes'] += len(jpeg)
+                else:
+                    counters['fail'] += 1
+                    if time.monotonic()-last_error[0] > 8:
+                        print('[视频] HTTP', response.status_code, flush=True)
+                        last_error[0] = time.monotonic()
+        except requests.RequestException as exc:
+            with results_lock:
+                counters['fail'] += 1
+                if time.monotonic()-last_error[0] > 8:
+                    print('[视频] 云端视频上传失败:', str(exc)[:120], flush=True)
+                    last_error[0] = time.monotonic()
+        finally:
+            upload_slots.release()
+
+    print(f'[视频] 云端推送目标 {VIDEO_UPLOAD_FPS:.0f}FPS，并发上传 {VIDEO_UPLOAD_CONCURRENCY}，过期帧自动丢弃',flush=True)
     last_seq = -1
-    last_log = 0.0
     next_send = time.monotonic()
-    sent = 0
-    last_report = time.monotonic()
     while True:
-        seq, jpeg, jpeg_at = jpeg_hub.wait_after(last_seq, timeout=0.5)
         now = time.monotonic()
-        if seq == last_seq or not jpeg or now - jpeg_at > 1.0:
-            continue
         if now < next_send:
-            # Wait for the newest frame instead of sending older queued frames.
-            time.sleep(min(next_send - now, .025))
+            time.sleep(min(next_send-now, .015))
+            continue
+        # Avoid backlog when the host cannot maintain the desired frame rate.
+        next_send = max(next_send + period, now + period * .5)
+        seq, jpeg, jpeg_at = jpeg_hub.wait_after(last_seq, timeout=.02)
+        now = time.monotonic()
+        if seq == last_seq or not jpeg or now - jpeg_at > .8:
             continue
         last_seq = seq
-        next_send = time.monotonic() + period
+        if not upload_slots.acquire(blocking=False):
+            with results_lock: counters['skipped'] += 1
+            continue
         with lock:
             camera_idx = current_camera_index
             camera_signal = current_camera_signal
         try:
-            response = session.post(CLOUD_STREAM_URL,
-                   files={'frame':('live.jpg', jpeg, 'image/jpeg')},
-                   data={'camera_signal':camera_signal,
-                         'camera_index':camera_idx if camera_idx is not None else ''},
-                   headers=HTTP_HEADERS, timeout=(1.5, 2.0))
-            if response.status_code == 200:
-                sent += 1
-            elif now-last_log > 5:
-                print('[视频] HTTP',response.status_code,flush=True);last_log=now
-        except requests.RequestException as exc:
-            if now-last_log > 5:
-                print('[视频] 网络上传失败（本地预览仍可连续显示）:',str(exc)[:100],flush=True)
-                last_log=now
-        if now-last_report > 8:
-            metrics = jpeg_hub.info()
-            print(f'[视频] 编码 {metrics["render_fps"]:.1f} FPS | 云端上传 {sent/(now-last_report):.1f} FPS '
-                  f'| AI {latest_infer_ms or 0:.0f}ms',flush=True)
-            sent = 0
-            last_report = now
+            pool.submit(send_one, seq, jpeg, camera_idx, camera_signal)
+        except Exception:
+            upload_slots.release()
+            raise
+        with results_lock:
+            elapsed = now - counters['last_report']
+            if elapsed >= 8:
+                metrics = jpeg_hub.info()
+                print(f'[视频] 编码 {metrics["render_fps"]:.1f}FPS | 云端请求 {counters["ok"]/elapsed:.1f}FPS '
+                      f'| 失败 {counters["fail"]} | 跳帧 {counters["skipped"]} '
+                      f'| 上行 {counters["bytes"]*8/elapsed/1e6:.2f}Mbps '
+                      f'| AI {latest_infer_ms or 0:.0f}ms (~{1000/(latest_infer_ms or 1000):.1f} FPS)',flush=True)
+                counters.update(ok=0,fail=0,skipped=0,bytes=0,last_report=now)
 
 
 def run_direct_preview_server():
@@ -580,70 +689,89 @@ def run_direct_preview_server():
     server.serve_forever(poll_interval=.2)
 
 
+def _distance_m(lat_a: float, lon_a: float, lat_b: float, lon_b: float) -> float:
+    """Haversine distance for suppression of repeat records at the same road spot."""
+    radius = 6371000.0
+    a1, a2 = math.radians(lat_a), math.radians(lat_b)
+    dlat, dlon = a2-a1, math.radians(lon_b-lon_a)
+    h = math.sin(dlat/2)**2 + math.cos(a1)*math.cos(a2)*math.sin(dlon/2)**2
+    return 2*radius*math.asin(min(1.0, math.sqrt(h)))
+
+
 def run_map_loop() -> None:
-    global latest_map, global_lon, global_lat
-    # Edge local coordinate canvas is just for spatial bucketing; visual map
-    # is rendered in the browser using configured AMap JS API. No map fetching in this loop.
+    """Archive ONLY new YOLO detections captured while a valid GPS fix existed.
+
+    This thread is intentionally independent of capture/inference. Older detection
+    results cannot be archived later merely because GPS became available.
+    Records are de-duplicated within a single inspection session by 20 m location
+    radius and damage severity. Failed uploads do not consume that zone.
+    """
+    global latest_map
+    processed = None
+    saved_places = []  # [(lat, lon, max_saved_severity), ...] within current session
+    active_session = None
+    last_attempt = 0.0
     while True:
-        center_lon, center_lat = get_location()
-        if center_lon is not None and center_lat is not None:
-            break
-        time.sleep(1)
-    display_center_lon, display_center_lat = center_lon, center_lat
-    base_map_img=np.full((MAP_HEIGHT,MAP_WIDTH,3), (232,239,245),dtype=np.uint8)
-    zones = {}
-    saved_severe_locations = set()
-
-    while True:
-        current_lon, current_lat = get_location()
         with lock:
-            current_severity = latest_detection_count
-            frame_to_save = latest_frame.copy() if latest_frame is not None else None
-
-        if current_lon is not None and current_lat is not None and current_severity > 0:
-            display_lon, display_lat = current_lon,current_lat
-            px, py = lonlat_to_pixel(display_lon, display_lat, display_center_lon, display_center_lat, ZOOM_LEVEL, MAP_WIDTH,
-                                     MAP_HEIGHT)
-            if 0 <= px < MAP_WIDTH and 0 <= py < MAP_HEIGHT:
-                my_zone = None
-                min_dist = float("inf")
-                for (cx, cy) in zones:
-                    dist = math.hypot(cx - px, cy - py)
-                    if dist <= ZONE_RADIUS and dist < min_dist:
-                        min_dist, my_zone = dist, (cx, cy)
-
-                if my_zone is None:
-                    my_zone = (px, py)
-                    zones[my_zone] = current_severity
-                else:
-                    zones[my_zone] = max(zones[my_zone], current_severity)
-
-                severity = zones[my_zone]
-                if severity >= 1:
-                    if my_zone not in saved_severe_locations and frame_to_save is not None:
-                        upload_to_cloud_async(frame_to_save, current_lon, current_lat, severity)
-                        if severity >= 2:
-                            save_path = os.path.join(SAVE_DIR,
-                                                     f"severe_lon{current_lon:.6f}_lat{current_lat:.6f}_{time.strftime('%Y%m%d_%H%M%S')}.jpg")
-                            cv2.imwrite(save_path, frame_to_save)
-                            cleanup_old_records(SAVE_DIR)
-                        saved_severe_locations.add(my_zone)
-                    if severity >= 3:
-                        cv2.circle(base_map_img, my_zone, radius=12, color=(0, 0, 255), thickness=-1)
-                    elif severity == 2:
-                        cv2.circle(base_map_img, my_zone, radius=9, color=(0, 165, 255), thickness=-1)
-                    else:
-                        cv2.circle(base_map_img, my_zone, radius=6, color=(0, 255, 255), thickness=-1)
-
-        with lock:
-            latest_map = base_map_img.copy() if base_map_img is not None else None
-        time.sleep(0.20)
-
+            event = latest_detection_event
+            command = global_command
+            session_id = global_session_id
+        if session_id != active_session or command != 'RUNNING':
+            active_session, saved_places = session_id, []
+            processed = None
+        if command != 'RUNNING' or not session_id or not event:
+            time.sleep(.2)
+            continue
+        seq = (event['session_id'],event['seq'])
+        if seq == processed:
+            time.sleep(.2)
+            continue
+        now = time.monotonic()
+        if event['session_id'] != session_id or now-event['observed_at'] > 4.0:
+            processed = seq
+            continue
+        lat, lon = event['latitude'], event['longitude']
+        if valid_coordinates(lat,lon) is None:
+            processed = seq
+            continue
+        # Both when the detection happened AND when it is committed, require
+        # a current GPS fix. Never queue a frame while waiting for positioning.
+        current_fix = location_manager.snapshot()
+        if current_fix['source'] == 'none' or valid_coordinates(
+                current_fix['latitude'], current_fix['longitude']) is None:
+            processed = seq
+            continue
+        prior = next((spot for spot in saved_places if _distance_m(lat,lon,spot[0],spot[1]) <= 20.0),None)
+        if prior and prior[2] >= event['severity']:
+            processed = seq
+            continue
+        if now-last_attempt < 1.0:
+            time.sleep(.15)
+            continue
+        last_attempt = now
+        ok = upload_to_cloud_sync(event['frame'], lon, lat, event['severity'],
+                                  session_id, event['location_source'])
+        if ok:
+            if prior:
+                prior[2] = max(prior[2], event['severity'])
+            else:
+                saved_places.append([lat, lon, event['severity']])
+            if event['severity'] >= 2:
+                save_path = os.path.join(SAVE_DIR,
+                    f"severe_lon{lon:.6f}_lat{lat:.6f}_{time.strftime('%Y%m%d_%H%M%S')}.jpg")
+                cv2.imwrite(save_path, event['frame'])
+                cleanup_old_records(SAVE_DIR)
+            processed = seq
+        elif time.monotonic()-event['observed_at'] > 4.0:
+            processed = seq
+        time.sleep(.2)
 
 def run_detection_loop() -> None:
     global latest_frame, latest_detection_count
     global current_camera_index, current_camera_brightness, current_camera_signal
     global active_camera,latest_detections,latest_prediction_time,latest_infer_ms,latest_damage_ratio,latest_damage_level
+    global latest_detection_reference, latest_detection_event
+    last_missing_gps_notice = 0.0
     cam = CameraStream()
     with lock: active_camera=cam
     model = None
@@ -674,9 +802,24 @@ def run_detection_loop() -> None:
                 model = YOLO_ONNX_Engine(MODEL_PATH)
 
             annotated_frame, severity_level = model.predict(frame)
+            # Snapshot the GPS at inference time. No GPS => no archive event.
+            # A location acquired later cannot retroactively geotag an old image.
+            fix = location_manager.snapshot()
+            coordinates = valid_coordinates(fix['latitude'], fix['longitude'])
+            event = None
+            if severity_level > 0 and coordinates and fix['source'] in ('hardware','phone') and global_session_id:
+                event = {'seq': model.inference_counter, 'observed_at':time.monotonic(),
+                         'session_id':global_session_id, 'severity':severity_level,
+                         'latitude':coordinates[0], 'longitude':coordinates[1],
+                         'location_source':fix['source'], 'frame':annotated_frame.copy()}
+            elif severity_level > 0 and time.monotonic()-last_missing_gps_notice >= 10.0:
+                print('[归档] 等待有效定位（硬件 GPS 或手机），暂不归档',flush=True)
+                last_missing_gps_notice=time.monotonic()
             with lock:
+                latest_detection_event=event
                 latest_detections=list(model.last_detections)
                 latest_prediction_time=time.monotonic()
+                latest_detection_reference=cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),(32,24),interpolation=cv2.INTER_AREA)
                 latest_infer_ms=model.last_infer_ms
                 latest_damage_ratio=model.last_damage_ratio
                 latest_damage_level=severity_level
@@ -684,8 +827,10 @@ def run_detection_loop() -> None:
 
         else:
             with lock:
+                latest_detection_event=None
                 latest_detections=[]
                 latest_prediction_time=0.0
+                latest_detection_reference=None
                 latest_damage_ratio=0.0
                 latest_damage_level=0
             annotated_frame = frame.copy()
@@ -740,82 +885,20 @@ if __name__ == "__main__":
 
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
-    local_ip = get_local_ip()
-    if local_ip.startswith('127.'):
-        print('[手机入口] 无法识别真实局域网 IP，请配置 PI_LAN_HOST=树莓派无线网卡IP',flush=True)
-    pi_url = f"https://{local_ip}:8080/phone"
-    print(f"[网络] 本机副驾驶定位网址为: {pi_url}")
+    print(f'[云端连接] {CLOUD_BASE_URL} | 设备编号 {DEVICE_ID}', flush=True)
+    print('[云端接口] /upload /update_stream /api/command（Android 独立定位）', flush=True)
+
+    # Android uses authenticated cloud APIs. No browser QR link is created.
 
 
-    def report_url_to_cloud():
-        while True:
-            try:
-                response=requests.post(REPORT_URL, json={"url": pi_url}, headers=HTTP_HEADERS, timeout=5)
-                response.raise_for_status()
-                print("[手机入口] 已上报树莓派 HTTPS 地址，电脑端可生成同网址二维码。", flush=True)
-                time.sleep(10)
-                continue
-            except Exception as e:
-                print(f"[网络] ⚠️ 汇报失败，原因: {e} \n(1秒后重试...)")
-                time.sleep(5)
-
-
-    threading.Thread(target=report_url_to_cloud, daemon=True).start()
+    # Retired Pi QR URL reporting. Do not start the legacy loop.
 
     threading.Thread(target=run_gps_reader, daemon=True).start()
 
-    from flask import Flask, request, jsonify
-
-    flask_app = Flask(__name__)
-    from amap_proxy import amap_blueprint
-    flask_app.register_blueprint(amap_blueprint)
-
-    # Serve the mobile GPS page independently over HTTPS.
-    from pathlib import Path
-    from flask import render_template, send_from_directory, Response
-    PHONE_UI_ROOT = Path(__file__).resolve().parent / 'phone_ui'
-    flask_app.template_folder = str(PHONE_UI_ROOT / 'templates')
-    flask_app.static_folder = str(PHONE_UI_ROOT / 'static')
-    flask_app.static_url_path = '/static'
-
-    @flask_app.route('/')
-    @flask_app.route('/phone')
-    def index():
-        return render_template('phone_sender.html')
-
-    @flask_app.route('/api/receive_location',methods=['POST'])
-    def phone_gps():
-        data=request.get_json(silent=True) or {}
-        try:
-            lat=float(data.get('latitude'))
-            lon=float(data.get('longitude'))
-            if not (math.isfinite(lat) and math.isfinite(lon) and -90<=lat<=90 and -180<=lon<=180) or (lat==0 and lon==0):
-                raise ValueError('坐标无效')
-        except (TypeError,ValueError):
-            return jsonify({'status':'error','message':'invalid coordinate'}),400
-        try:
-            r=requests.post(f'{CLOUD_BASE_URL}/api/receive_location',json=data,headers=HTTP_HEADERS,timeout=5)
-            if not r.ok:
-                return jsonify({'status':'error','message':'云端拒绝了定位上报：'+str(r.status_code)+' '+r.text[:100]}),502
-            set_location(lat,lon,source='phone')
-            result=r.json()
-            return jsonify(result)
-        except (requests.RequestException,ValueError) as exc:
-            return jsonify({'status':'error','message':'位置未能上传至云端：'+str(exc)[:160]}),502
-
-    # Use a trusted certificate when PI_SSL_CERT_FILE/PI_SSL_KEY_FILE are provided.
-    pi_cert=os.environ.get('PI_SSL_CERT_FILE') or str(Path(__file__).resolve().parent/'certs/lan.crt')
-    pi_key=os.environ.get('PI_SSL_KEY_FILE') or str(Path(__file__).resolve().parent/'certs/lan.key')
-    if not (Path(pi_cert).is_file() and Path(pi_key).is_file()):
-        pi_cert=pi_key=None
-        print('[手机 HTTPS] 未找到树莓派持久证书，将使用临时自签名证书；手机定位可能因证书不受信任而被拒绝。建议先执行 tools/create_lan_cert.py',flush=True)
-    pi_tls=(pi_cert,pi_key) if pi_cert and pi_key else 'adhoc'
-    threading.Thread(
-        target=lambda: flask_app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False, ssl_context=pi_tls),
-        daemon=True).start()
-
+    # Android locations arrive through the authenticated cloud endpoint.
+    # No local phone browser or QR/HTTPS:8080 service is started.
     threading.Thread(target=run_command_polling, daemon=True).start()
-    threading.Thread(target=run_phone_location_polling, daemon=True).start()
+    threading.Thread(target=run_phone_location_polling, name='RoadSensePhoneGPSFallback', daemon=True).start()
     threading.Thread(target=run_map_loop, daemon=True).start()
     threading.Thread(target=run_heartbeat_loop, daemon=True).start()
     threading.Thread(target=run_video_render_loop, name='RoadSenseVideoRender', daemon=True).start()

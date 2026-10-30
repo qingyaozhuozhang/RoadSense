@@ -62,14 +62,17 @@
         try{
           AMap=await loadAMap();
           const initial=current|| (points.length?position(points[0].lon,points[0].lat):[116.397428,39.90923]);
-          const mapDiv=document.createElement('div');mapDiv.className='rs-amap-canvas';node.prepend(mapDiv);
+          const mapDiv=document.createElement('div');mapDiv.className='rs-amap-canvas';
+          // Ensure the standalone Android /app/map page works even without dashboard CSS.
+          Object.assign(mapDiv.style,{position:'absolute',inset:'0',width:'100%',height:'100%'});
+          node.prepend(mapDiv);
           map=new AMap.Map(mapDiv,{center:initial,zoom:opts.zoom||18.2,viewMode:'2D',resizeEnable:true,
             mapStyle:'amap://styles/normal',showLabel:true,features:['bg','road','building','point']});
           map.addControl(new AMap.Scale());
           if(AMap.ToolBar)map.addControl(new AMap.ToolBar({position:{right:'13px',top:'58px'}}));
           node.append(centerButton,overlay);
           map.on('dragstart',()=>{follow=false;});
-          map.on('complete',hideError);
+          map.on('complete',()=>{hideError();map.resize();});
           if(window.ResizeObserver)new ResizeObserver(()=>{if(map&&node.offsetWidth&&node.offsetHeight)map.resize();}).observe(node);
           render();return true;
         }catch(error){started=false;loading=null;showError('高德地图未能加载：'+(error.message||String(error)));return false;}

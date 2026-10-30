@@ -1,0 +1,9 @@
+.rs-admin-record-name{font-weight:700;color:#163953;max-width:320px;min-width:180px;overflow-wrap:anywhere;line-height:1.5}
+.rs-admin-thumb-button{border:1px solid #d9e9f3;border-radius:10px;background:#f4f9fd;padding:3px;cursor:zoom-in;display:inline-flex;align-items:center;justify-content:center}
+.rs-admin-thumb-button img{display:block;width:88px;height:64px;object-fit:cover;border-radius:7px}
+.rs-admin-photo-overlay[hidden]{display:none!important}
+.rs-admin-photo-overlay{position:fixed;inset:0;z-index:6000;background:rgba(4,18,38,.83);display:flex;align-items:center;justify-content:center;padding:20px}
+.rs-admin-photo-dialog{background:#fff;border-radius:18px;box-shadow:0 16px 80px #0006;max-width:min(1120px,96vw);max-height:94vh;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:20px}
+.rs-admin-photo-heading{display:flex;gap:16px;align-items:center;justify-content:space-between;color:#163953;overflow-wrap:anywhere}
+.rs-admin-photo-name{font-size:18px}
+.rs-admin-photo-dialog img{display:block;max-width:100%;max-height:76vh;object-fit:contain;margin:auto;border-radius:8px}

@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# Per owner request, runtime photos may be committed after backing them up.

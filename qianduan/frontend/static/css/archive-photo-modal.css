@@ -1,0 +1,20 @@
+.archive-photo-overlay[hidden]{display:none!important}
+.archive-photo-overlay{position:fixed;inset:0;background:rgba(5,18,34,.77);z-index:210;display:grid;place-items:center;padding:18px;backdrop-filter:blur(9px)}
+.archive-photo-dialog{width:min(1000px,100%);max-height:min(94dvh,990px);overflow-y:auto;background:linear-gradient(145deg,#fbfdff,#ecf5fc);border:1px solid #e0eef8;border-radius:23px;box-shadow:0 34px 100px #0008;color:#173751}
+.archive-photo-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:25px 28px 15px}
+.archive-photo-header span{color:#298bc5;font-size:11px;font-weight:800;letter-spacing:1.7px}
+.archive-photo-header h2{font-size:24px;margin:6px 0;color:#15375a}
+.archive-photo-header p{color:#67859d;font-size:13px;margin:0;line-height:1.7}
+.archive-photo-close{border:1px solid #c7dfea;background:#fff;color:#496a85;border-radius:12px;width:42px;height:42px;cursor:pointer;font-size:19px}
+.archive-photo-close:hover{background:#e8f4fb}
+.archive-photo-tabs{display:flex;gap:10px;padding:0 28px 18px;flex-wrap:wrap}
+.archive-photo-tabs button{font-size:13px;border:1px solid #c8dcea;background:#fff;border-radius:10px;padding:10px 17px;color:#52738f;cursor:pointer;font-weight:700}
+.archive-photo-tabs button[aria-pressed="true"]{color:#fff;background:#177bc5;border-color:#177bc5}
+.archive-photo-tabs button[hidden]{display:none!important}
+.archive-photo-figure{margin:0 28px;min-height:250px;max-height:65dvh;background:#0d1b28;border-radius:16px;overflow:hidden;display:grid;place-items:center;position:relative}
+.archive-photo-figure img{display:block;max-width:100%;max-height:65dvh;object-fit:contain}
+.archive-photo-figure img[hidden]{display:none!important}
+.archive-photo-figure span{color:#e7f0f9;font-size:13px;padding:30px;text-align:center}
+.archive-photo-figure span[hidden]{display:none!important}
+.archive-photo-footer{font-size:12px;color:#7691a9;text-align:center;padding:16px 18px 22px;margin:0}
+@media(max-width:650px){.archive-photo-overlay{padding:8px}.archive-photo-dialog{border-radius:16px;max-height:95dvh}.archive-photo-header{padding:21px 16px 15px}.archive-photo-header h2{font-size:20px}.archive-photo-tabs{padding:0 16px 14px}.archive-photo-figure{margin:0 12px;min-height:180px}}

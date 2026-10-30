@@ -285,3 +285,24 @@ body { font-size: 15px; line-height: 1.65; color: var(--rs-ink); background: #f8
   .footer-meta { gap: 8px; }
   .footer-english { font-size: 10px; white-space: normal; }
 }
+.rs-account-name{font-size:12px;font-weight:700;color:#57728f;max-width:116px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-logout-form{display:flex;align-items:center;margin:0}
+.rs-logout-btn{padding:7px 11px;border:1px solid #dce5ed;border-radius:8px;color:#496c86;background:#f5f9fc;cursor:pointer;font-size:12px;white-space:nowrap}
+.rs-logout-btn:hover{background:#e5f3f3;color:#197b81}
+
+/* Server-rendered login status: visible immediately after the dashboard redirect. */
+.workspace-notice {
+  display: flex; align-items: center; gap: 13px;
+  margin: 0 0 20px; padding: 16px 19px;
+  font-size: 15px; font-weight: 700; line-height: 1.65;
+  border: 1px solid transparent; border-radius: 12px;
+  box-shadow: 0 9px 24px rgba(20, 66, 100, .07);
+}
+.workspace-notice > span {
+  display: grid; place-items: center; flex: 0 0 28px;
+  height: 28px; border-radius: 50%; font-weight: 900;
+}
+.workspace-notice-success { color: #136a56; background: #ecfbf4; border-color: #bbe9d2; }
+.workspace-notice-success > span { color: #fff; background: #1dac83; }
+.workspace-notice-error { color: #a63649; background: #fff1f2; border-color: #f6c8d0; }
+.workspace-notice-error > span { color: #fff; background: #d95369; }

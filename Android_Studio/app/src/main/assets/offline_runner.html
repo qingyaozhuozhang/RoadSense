@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>RoadSense · 离线巡检跑酷</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+html,body{margin:0;width:100%;min-height:100%;font-family:system-ui,-apple-system,'Microsoft Yahei',sans-serif}
+body{background:radial-gradient(circle at 55% 6%,#183b5f,#081b30 58%,#061323);color:#effaff;display:flex;align-items:center;justify-content:center;padding:22px 14px}
+.shell{width:min(660px,100%);text-align:center;margin:auto}
+.logo{display:flex;align-items:center;justify-content:center;margin:0 auto 13px;width:52px;height:52px;border-radius:15px;background:linear-gradient(130deg,#3c9dff,#24d4c4);box-shadow:0 8px 25px #0b6d87aa}
+.logo svg{width:34px;height:34px}h1{font-size:22px;letter-spacing:2.5px;margin:0 0 7px;font-weight:850}
+.subtitle{font-size:13px;color:#a0c5d9;margin:0 0 15px;line-height:1.65}
+.status{display:inline-flex;gap:8px;align-items:center;padding:8px 14px;margin-bottom:18px;border:1px solid #376c8a;border-radius:50px;background:#103149;color:#9ce7e2;font-size:12px}
+.dot{width:7px;height:7px;background:#f9b65a;border-radius:50%;box-shadow:0 0 10px #f5bb66}
+.game-panel{background:#0a2740;border:1px solid #31647d;border-radius:18px;overflow:hidden;box-shadow:0 16px 40px #00122299}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:manipulation}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:13px 10px;background:#0a263c;border-top:1px solid #204b61}
+.stat-label{display:block;color:#729bb3;font-size:10px;letter-spacing:.8px;margin-bottom:5px}
+.stat-value{display:block;color:#efffff;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.tip{color:#aac7d8;font-size:13px;line-height:1.8;margin-top:16px}.tip strong{color:#5ce7db}
+button{display:inline-flex;align-items:center;justify-content:center;min-width:190px;border:0;border-radius:13px;padding:12px 22px;background:linear-gradient(110deg,#238ed1,#24b6ac);color:white;font-size:14px;font-weight:700;margin:16px 0 6px}
+.small{font-size:11px;color:#7095a7;margin-top:12px}
+</style></head><body>
+<div class="shell">
+ <div class="logo" aria-label="RoadSense 道路标识"><svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5L7 35M27 5L33 35M20 6V13M20 19V26M20 32V35" stroke="white" stroke-width="3" stroke-linecap="round"/></svg></div>
+ <h1>ROADSENSE</h1>
+ <p class="subtitle">云端暂时无法连接 · 已切换至离线挑战</p>
+ <div class="status"><span class="dot"></span><span>自动检测服务器 · 每 5 秒重试</span></div>
+ <div class="game-panel"><canvas id="game" width="480" height="238" aria-label="小恐龙道路跑酷，点按跳跃"></canvas>
+  <div class="stats"><div><span class="stat-label">存活时间</span><span class="stat-value" id="survival">00:00</span></div>
+  <div><span class="stat-label">难度等级</span><span class="stat-value" id="level">LV.1</span></div>
+  <div><span class="stat-label">最高得分</span><span class="stat-value" id="best">0</span></div></div>
+ </div>
+ <p class="tip"><strong>点击游戏区域</strong>跳跃避开路障<br>每 15 秒升级：速度更快、障碍更密、更具挑战性</p>
+ <button id="restart" type="button">重新挑战</button>
+ <div class="small">网络恢复后自动进入 RoadSense · 离线时不显示定位上报控件</div>
+</div>
+<script>
+(() => {'use strict';
+ const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+ const timeEl=document.getElementById('survival'),levelEl=document.getElementById('level'),bestEl=document.getElementById('best');
+ const W=480,H=238,ground=193,floor=ground-34,playerX=62;
+ let game,lastTime=0,backgroundTime=0,uiTick=0;
+ function rnd(a,b){return a+Math.random()*(b-a)}
+ function difficulty(seconds){
+   const level=Math.min(12,1+Math.floor(seconds/15));
+   return {level,speed:Math.min(10.8,4.1+(level-1)*.68+Math.min(1.0,seconds*.012)),
+      baseGap:Math.max(45,93-(level-1)*4.4),heightBonus:Math.min(10,level-1)};
+ }
+ function reset(){const best=game?game.best:0;
+  game={y:floor,vy:0,obstacles:[],time:0,next:86,score:0,best,dead:false,started:false};
+  timeEl.textContent='00:00';levelEl.textContent='LV.1';bestEl.textContent=String(best);
+ }
+ function jump(){if(game.dead){reset();game.started=true;game.vy=-11.8;return;}
+  if(!game.started)game.started=true;
+  if(game.y>=floor-.5) game.vy=-11.8;
+ }
+ canvas.addEventListener('pointerdown',e=>{e.preventDefault();jump()});
+ document.addEventListener('keydown',e=>{if(['Space','ArrowUp','KeyW'].includes(e.code)){e.preventDefault();jump()}});
+ document.getElementById('restart').addEventListener('click',()=>{reset();game.started=true});
+ function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h))}
+ function dino(x,y,run){ctx.save();ctx.translate(Math.round(x),Math.round(y));const a='#5ce4d9',d='#0c7290';
+  rect(11,0,23,17,a);rect(8,14,24,17,a);rect(2,18,12,8,a);rect(30,7,10,7,a);rect(30,7,4,4,'#103b54');
+  rect(0,17,6,5,d);rect(14,29,7,5,run?d:a);rect(26,29,7,5,run?a:d);rect(18,24,4,5,'#f1ffff');ctx.restore();}
+ function barrier(o){rect(o.x,ground-o.h,o.w,o.h,'#ffad68');rect(o.x+3,ground-o.h+8,o.w-6,5,'#bc634a');rect(o.x-2,ground-8,o.w+4,4,'#fff0ba');}
+ function draw(time){const difficultyState=difficulty(game.time),speed=difficultyState.speed;
+  rect(0,0,W,H,'#0e2f4a');
+  for(let i=0;i<19;i++){const drift=(backgroundTime*(.2+(i%3)*.05));const x=((i*81-drift)%(W+70)+(W+70))%(W+70);rect(x,19+(i%7)*19,2,2,'#4b8ba5');}
+  for(let i=0;i<8;i++){const x=((i*100-backgroundTime*.36)%(W+80)+(W+80))%(W+80);rect(x,149+(i%3)*8,63,4,'#183e58');}
+  rect(0,ground,W,3,'#69d8d4');
+  for(let i=0;i<17;i++){let x=((i*41-backgroundTime*speed)%(W+41)+(W+41))%(W+41);rect(x,ground+14,23,3,'#32677e');}
+  dino(playerX,game.y,Math.floor(backgroundTime/7)%2===0);
+  for(const o of game.obstacles)barrier(o);
+  ctx.fillStyle='#c5f3f3';ctx.font='bold 15px monospace';ctx.textAlign='left';ctx.fillText('SCORE '+String(game.score).padStart(5,'0'),14,22);
+  ctx.fillStyle='#7fcecf';ctx.fillText('LV '+String(difficultyState.level).padStart(2,'0'),411,22);
+  if(!game.started||game.dead){rect(84,67,312,90,'#092235');ctx.strokeStyle='#337b89';ctx.strokeRect(84,67,312,90);
+   ctx.textAlign='center';ctx.fillStyle='#ffffff';ctx.font='bold 21px sans-serif';ctx.fillText(game.dead?'挑战结束！':'离线道路跑酷',240,104);
+   ctx.fillStyle='#68ded4';ctx.font='14px sans-serif';ctx.fillText(game.dead?'点击画面重新挑战':'点击屏幕开始 · 存活越久越难',240,133);ctx.textAlign='left';}
+ }
+ function frame(t){const dt=lastTime?Math.min(2,(t-lastTime)/16.667):1;lastTime=t;backgroundTime+=dt;
+  if(game.started&&!game.dead){game.time+=dt/60;const diff=difficulty(game.time);
+   game.y+=game.vy*dt;game.vy+=.69*dt;if(game.y>floor){game.y=floor;game.vy=0}
+   game.next-=dt;
+   if(game.next<=0){const h=Math.round(rnd(21,38)+diff.heightBonus);
+    game.obstacles.push({x:W+14,w:Math.round(rnd(17,29)),h});
+    // Gap is measured in frames.  Higher levels reduce it while keeping jumpable spacing.
+    game.next=diff.baseGap+rnd(0,25);
+   }
+   for(const obstacle of game.obstacles)obstacle.x-=diff.speed*dt;
+   game.obstacles=game.obstacles.filter(o=>o.x+o.w>0);
+   game.score=Math.floor(game.time*11);game.best=Math.max(game.best,game.score);
+   for(const o of game.obstacles){if(playerX+29>o.x+3&&playerX+6<o.x+o.w-2&&game.y+31>ground-o.h+3&&game.y+5<ground){game.dead=true;break}}
+   uiTick+=dt;if(uiTick>12||game.dead){uiTick=0;const s=Math.floor(game.time);
+    timeEl.textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+    levelEl.textContent='LV.'+diff.level;bestEl.textContent=String(game.best);
+   }
+  }
+  draw(t);requestAnimationFrame(frame);
+ }
+ reset();requestAnimationFrame(frame);
+ document.addEventListener('visibilitychange',()=>{lastTime=0});
+ // Expose only deterministic difficulty data for static/debug verification.
+ window.roadSenseOfflineDifficulty=difficulty;
+})();
+</script></body></html>

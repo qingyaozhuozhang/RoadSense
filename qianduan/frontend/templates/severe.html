@@ -2,18 +2,27 @@
 {% set active_page = 'severe' %}
 {% block title %}损伤记录档案{% endblock %}
 {% block breadcrumb %}损伤记录档案{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/archive-photo-modal.css', v='20261027') }}">{% endblock %}
 {% block content %}
 <section class="page-heading"><div><p class="eyebrow">INSPECTION ARCHIVE</p><h1 class="page-title">道路损伤档案</h1><p class="page-description">查看道路损伤记录、定位分布与历史巡检情况</p></div><div class="page-heading-actions"><button type="button" class="btn btn-light" id="refresh-records"><svg class="icon"><use href="#i-refresh"/></svg>刷新数据</button><button type="button" class="btn btn-primary" id="export-records"><svg class="icon"><use href="#i-download"/></svg>导出 CSV</button></div></section>
 <div class="archive-statline" aria-label="损伤等级数量"><span class="mini-count">全部记录 <strong id="archive-total">--</strong></span><span class="mini-count">轻微损伤 <strong id="archive-mild">--</strong></span><span class="mini-count">中度损伤 <strong id="archive-moderate">--</strong></span><span class="mini-count">严重损伤 <strong id="archive-severe">--</strong></span></div>
 <div class="archive-toolbar" aria-label="档案筛选工具">
   <label class="field" for="session-filter"><svg class="icon"><use href="#i-layers"/></svg><select id="session-filter"><option value="all">全部巡检批次</option></select></label>
-  <label class="field search-field" for="record-search"><svg class="icon"><use href="#i-search"/></svg><input type="search" id="record-search" placeholder="搜索任务编号、记录时间或坐标..." autocomplete="off"></label>
+  <label class="field search-field" for="record-search"><svg class="icon"><use href="#i-search"/></svg><input type="search" id="record-search" placeholder="搜索记录名称、账号、任务编号或坐标..." autocomplete="off"></label>
   <div class="archive-tabs" role="group" aria-label="损伤等级筛选"><button type="button" class="filter-tab" data-level="all" aria-pressed="true">全部</button><button type="button" class="filter-tab" data-level="轻微" aria-pressed="false">轻微</button><button type="button" class="filter-tab" data-level="中度" aria-pressed="false">中度</button><button type="button" class="filter-tab" data-level="严重" aria-pressed="false">严重</button></div>
 </div>
-<div class="archive-summary"><strong>检测记录 <span id="filtered-count">--</span></strong><small>点击右侧记录，可快速定位至地图中的对应位置</small></div>
+<div class="archive-summary"><strong>检测记录 <span id="filtered-count">--</span></strong><small>点击有照片的记录可查看完整路面照片；没有图片的记录可查看地图位置</small></div>
 <div class="archive-layout">
   <section class="panel archive-map-panel"><div class="panel-header"><div class="panel-heading"><h2>空间分布地图</h2><p>道路损伤位置分布</p></div><span class="badge badge-info" id="marker-count">0 个有效坐标</span></div><div class="archive-map-wrap"><div id="map-container" class="archive-map roadsense-interactive-map" aria-label="道路损伤真实位置交互地图" hidden></div><div class="archive-map-empty" id="archive-map-empty"><img src="{{ url_for('static',filename='img/archive-aerial-wide.jpg') }}" alt="城市道路立体空间分布概念图，非真实定位数据"><span class="archive-demo-label"><img src="{{ url_for('static',filename='img/roadsense-mark.svg') }}" alt=""> ROAD NETWORK · 全域道路视野</span><div class="rs-archive-radar" aria-hidden="true"><i></i><i></i><i></i></div><div class="archive-map-empty-caption"><strong>道路空间全景</strong><span>暂无巡检记录 · 开始巡检后将在地图标注真实损伤位置</span></div></div></div><div class="map-caption"><span>支持地图缩放与位置定位 · 点击标记查看损伤详情</span><div class="map-legend"><span class="legend-item"><i class="legend-dot"></i>轻微</span><span class="legend-item"><i class="legend-dot orange"></i>中度</span><span class="legend-item"><i class="legend-dot red"></i>严重</span></div></div></section>
   <section class="archive-list" id="records-container" aria-live="polite"><div class="archive-empty"><svg class="icon"><use href="#i-clock"/></svg><strong>记录加载中</strong><span>正在获取云端检测档案...</span></div></section>
 </div>
+<div class="archive-photo-overlay" id="archive-photo-overlay" hidden>
+  <section class="archive-photo-dialog" role="dialog" aria-modal="true" aria-labelledby="archive-photo-title">
+    <header class="archive-photo-header"><div><span>ROAD DAMAGE · INSPECTION PHOTO</span><h2 id="archive-photo-title">道路损伤照片</h2><p id="archive-photo-info">—</p></div><button type="button" id="archive-photo-close" class="archive-photo-close" aria-label="关闭照片预览">✕</button></header>
+    <div class="archive-photo-tabs" role="group" aria-label="选择照片类型"><button id="archive-photo-annotated" type="button" aria-pressed="true">YOLO 标注结果</button><button id="archive-photo-original" type="button" aria-pressed="false">路面原始照片</button></div>
+    <div class="archive-photo-figure"><img id="archive-photo-image" alt="路面损伤照片"><span id="archive-photo-error" hidden>无法读取该张照片，请确认文件仍保存在阿里云。</span></div>
+    <p class="archive-photo-footer">该图片来自已经归档的巡检记录 · 按 Esc 或点击右上角退出</p>
+  </section>
+</div>
 {% endblock %}
-{% block page_scripts %}<script src="{{ url_for('static', filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static', filename='js/severe.js') }}" defer></script>{% endblock %}
+{% block page_scripts %}<script src="{{ url_for('static', filename='js/live_map.js') }}" defer></script><script src="{{ url_for('static', filename='js/severe.js', v='20261028b') }}" defer></script>{% endblock %}

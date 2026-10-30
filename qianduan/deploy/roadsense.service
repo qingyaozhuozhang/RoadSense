@@ -1,0 +1,20 @@
+[Unit]
+Description=RoadSense 云端服务（手动启动、窗口关闭后持续运行）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/RoadSense/qianduan
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/admin/Intelligent-Road-Inspection-System/venv/bin/python -u server/app.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

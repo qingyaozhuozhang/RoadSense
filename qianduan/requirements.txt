@@ -1,5 +1,9 @@
 Flask>=2.3,<4
 requests>=2.31,<3
 qrcode[pil]>=7.4,<9
+numpy>=1.24,<3
+opencv-python-headless>=4.8,<5
+onnxruntime>=1.17,<2
+gunicorn>=21,<24
 
 cryptography>=42,<49  # create local CA / HTTPS certificate for phone GPS

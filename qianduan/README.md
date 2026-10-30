@@ -1,85 +1,115 @@
-# RoadSense 网页与 Flask 服务
+# qianduan · RoadSense 云端服务
 
-此目录同时包含用户网页和 Flask API，适合先在电脑上运行，再部署到服务器。没有额外的 Node.js 构建步骤。
+本目录包含统一 Web 控制台、Flask API、SQLite 持久化、多设备管理、照片 YOLO 推理及设备定位服务。
 
-## 目录
+## 1. 运行要求
 
-```text
-qianduan/
-├── frontend/
-│   ├── templates/      首页、巡检、档案、GPS 和手机节点页面
-│   └── static/         dashboard.css（基础组件）、theme.css（主题）、JavaScript 和图片
-├── server/
-│   ├── app.py          Flask 应用与边缘设备通信接口
-│   ├── location_state.py 位置时效与优先级管理
-│   ├── coordinate_utils.py 经纬度转换
-│   ├── storage.py      损伤记录与图片存储
-│   └── amap_proxy.py   高德安全代理
-├── scripts/create_lan_cert.py  局域网 HTTPS 测试证书工具
-├── data/              运行时数据
-├── .env.example       配置模板
-└── requirements.txt
-```
+- Ubuntu 22.04/24.04 或兼容 Linux；Python 3.10+。
+- `models/best.onnx` 存在；云端执行手机照片的 ONNX 推理。
+- 至少一个可访问的 TCP 端口（示例 5000），服务器须有写入 `data/` 的权限。
 
-## 启动
+## 2. 安装与配置
 
 ```bash
 cd qianduan
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-test -f .env || cp .env.example .env
+python -m pip install -r requirements.txt
+# 已包含 .env；迁移新服务器时可按 .env.example 调整
+```
+
+`qianduan/.env` 已包含之前使用的部署值。第一次运行前核对：
+
+- `HOST=0.0.0.0`、`PORT=5000`：绑定地址及端口。
+- `AMAP_JS_KEY`、`AMAP_JS_SECRET`：已使用历史项目中的高德 Web JS API Key 与安全密钥。
+- `DEVICE_TOKEN`：**首台设备**令牌，和本包 `houduan/.env` 中的主设备令牌相同。
+- `BOOTSTRAP_DEVICE_ID=pi-main`：首台设备编号；更多设备在管理员后台新增，每台获取独立令牌。
+- `DEVICE_CLOUD_BASE_URL=http://YOUR_SERVER_IP:5000`：管理员下载设备 `.env` 时使用的云端可达地址（若文件中没有此键，使用默认部署值）。
+- `SESSION_COOKIE_SECURE=0` 仅供本地 HTTP 测试；接入 HTTPS 后设置为 `1`。
+- `ROADSENSE_DATA_DIR` / `PHONE_YOLO_MODEL`：留空或不设置时分别使用 `data/` 与 `models/best.onnx` 的默认位置。
+
+**交付包按使用者要求包含已填好的 `.env`；公开仓库会暴露设备令牌和高德密钥。请在生产部署前轮换这些值。**
+
+## 3. 首次创建管理员
+
+现有代码自带两个预置管理员账号的**加盐密码哈希**（`server/admin_seeds.py`），第一次创建空数据库时自动写入。已有阿里云 `data/accounts.sqlite3` 的话，应当保留原数据，避免账号状态丢失。
+
+可使用 `python tools/check_admin_login.py` 仅在服务器本机检查账号；如需创建额外管理员，也可运行 `python tools/create_admin.py --username <登录名>`（输入密码时不回显）。
+
+**注意：历史压缩包不包含 ECS 上的真实数据库；新环境启动只创建新数据库，原损伤记录不会自动恢复，必须另外复制 ECS 上 `data/`。**
+
+## 4. 启动与检查
+
+调试环境：
+
+```bash
 python server/app.py
 ```
 
-服务地址：`http://127.0.0.1:5000`。使用脚本 `./start_local.sh` 也可在 Ubuntu 上启动；Windows 环境可运行 `start_local.bat`。
+在本机检查：
 
-### 高德地图接入
+```bash
+curl -i http://127.0.0.1:5000/api/health
+```
 
-1. 登录 [高德开放平台](https://console.amap.com/)，在应用中创建 **Web端（JS API）** 类型的 Key，并获取安全密钥。
-2. 本地交付包中的 `.env` 已包含所需配置；重新创建环境或更换凭证时，在本目录 `.env` 中填写：
+浏览器进入 `http://YOUR_SERVER_IP:5000/login`，登录后使用 `/admin` 管理设备和账号。注册、验证码、设备可见范围和管理员权限在服务器端校验。
 
-   ```ini
-   AMAP_JS_KEY=你的JSAPI_Key
-   AMAP_JS_SECRET=你的安全密钥
-   HOST=0.0.0.0
-   PORT=5000
-   ```
+## 5. 关闭终端后保持运行（systemd）
 
-3. 重启 Flask，在浏览器查看 `/gps`、`/location` 和 `/severe`。地图只在存在相应有效坐标或损伤记录时显示定位标记。
-4. 本地交付包包含私有配置 `.env`，上传 GitHub 前确保它仍被 `.gitignore` 排除，切勿将含密钥的 ZIP 公开发布。安全密钥由 Flask 服务端代理使用，不能写入公开的 HTML、JavaScript 或提交 GitHub。**不要混用 Web 服务 Key 和 Web端 JS API Key。**
+部署示例在 `deploy/roadsense.service`。当前 service 已按历史部署路径 `/home/admin/RoadSense/qianduan` 和 `/home/admin/Intelligent-Road-Inspection-System/venv/bin/python` 设置；如实际环境不同再修改，然后：
 
-根据项目实现，高德地图只显示转换后的 GCJ-02 坐标；后端和存档保留 WGS84 原始值。
+```bash
+sudo cp deploy/roadsense.service /etc/systemd/system/roadsense.service
+sudo systemctl daemon-reload
+sudo systemctl disable roadsense        # 不随系统开机自动启动
+sudo systemctl start roadsense          # 后台运行；可以关闭 SSH 窗口
+sudo systemctl is-active roadsense      # active 说明运行中
+```
 
-### 手机位置上报
+真正停止：
 
-电脑端 `/location` 显示手机节点状态、可访问网址和二维码，**不读取电脑浏览器的地理位置**。手机通过 HTTPS 访问 `/phone` 并启动位置上报，电脑收到有效坐标后再显示经纬度与地图。运行在边缘设备上的独立手机 HTTPS 页面详见 [边缘端说明](../houduan/README.md)。
+```bash
+sudo systemctl stop roadsense
+```
 
-浏览器 Geolocation 要求安全上下文；仅连接同一 Wi-Fi 不能替代可信 HTTPS。`scripts/create_lan_cert.py` 可辅助制作本地证书，但手机仍须正确信任该证书。
+更新代码后：`sudo systemctl restart roadsense`。日志：`sudo journalctl -u roadsense -n 100 --no-pager`。
 
-## 主要接口
+> 现有项目的 Flask 开发服务器仅用于测试；生产建议单 worker + 多线程 Gunicorn、受信任反向代理与 HTTPS，避免开发服务器直接暴露公网。
 
-| 路径 | 说明 |
+## 6. 数据库、设备和照片
+
+运行时在 `data/` 自动建立：
+
+| 文件或目录 | 内容 |
 |---|---|
-| `/` | 巡检概览 |
-| `/detection` | 实时视频与任务控制 |
-| `/severe` | 损伤档案与空间分布 |
-| `/gps` | GPS 模块位置 |
-| `/location` | 电脑端手机位置接收 |
-| `/phone` | 手机端位置采集 |
-| `/api/status`、`/api/control`、`/api/command` | 设备与任务状态 |
-| `/update_stream`、`/video_feed`、`/api/video_status` | 实时画面与状态 |
-| `/upload`、`/api/records` | 损伤记录上传与查询 |
-| `/api/receive_location` | 手机节点位置上报 |
+| `accounts.sqlite3` | 用户、密码哈希、管理员/普通用户角色、定位授权 |
+| `devices.sqlite3` | 设备编号、所属账号、独立设备令牌哈希 |
+| `records.sqlite3` | 损伤记录、来源身份、管理员审计日志 |
+| `images/` | 原始及识别图像；数据库保存文件名 |
 
-## 功能实现
+旧版 `records.json` 可在首次初始化时迁移；**请先备份现有 `data/`**；本次代码压缩包不会自动提取云端历史数据库。系统使用 SQLite WAL 处理单实例并发；真正跨多个云工作进程时还需要独立状态服务。
 
-Flask 负责接收边缘设备的心跳、视频帧及识别记录，Jinja2 渲染页面，JavaScript 轮询运行状态并使用 MJPEG 展示画面。历史数据写入 `data/records.json` 和 `data/images/`，暂不依赖数据库服务器。位置管理器会检查位置合法性、数据来源和最新上报时间，硬件 GPS 优先，手机备用；过期位置不会继续标记为当前有效位置。
+管理员可以新增设备、为设备分配普通用户，下载设备专属完整 `.env`；一个普通用户最多关联一台边缘设备。管理员也可以为未分配设备的普通用户单独开通手机定位权限。普通用户不能读取其他人的设备视频/归档图片。
 
-## 注意事项
+## 7. 主要接口
 
-- 本目录的 `.env`、局域网证书私钥和设备令牌禁止提交至 GitHub。
-- 使用真实设备时，需要保证采集端能访问网页服务器的 IP/端口；不能把采集端的 `127.0.0.1` 指向另一台电脑。
-- 公开部署应使用 HTTPS、设备认证及生产级 WSGI 服务；Flask 内置开发服务器仅用于本地调试。
-- JSON 文件适合本地演示和单进程运行，多设备并发及长期运行建议迁移到数据库。
-- 地图初始化需要互联网和可用的高德 Key；没有定位时地图保持等待状态是正常的。
+- `GET /api/health`：服务健康检查。
+- `POST /update_stream`：经过设备令牌认证的实时画面上传。
+- `POST /upload`：设备损伤记录入库。
+- `GET /api/phone_location`：对应设备读取关联手机的备用坐标。
+- `POST /api/receive_location`：经登录会话与定位权限检查的手机坐标上传。
+- `POST /api/phone/preview`、`POST /api/phone/archive`：手机先预览、确认后归档。
+
+不建议直接在浏览器控制台手写请求绕过前端；所有操作都需要身份和权限校验。
+
+## 8. 测试与安全
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+若依赖或摄像头模拟环境不齐，先跑单独的 SQLite/纯 Python 测试再排查。所有密码应当以哈希存储；管理员只能重置普通用户密码，不能读取原始明文。有关路面检测与去重请看仓库 `docs/ROAD_DAMAGE_ALGORITHM.md`。
+
+### 已配置的部署路径
+
+云端 `.env` 默认将模型指向 `/home/admin/RoadSense/qianduan/models/best.onnx`，数据目录为 `/home/admin/RoadSense/qianduan/data`；你的系统若安装在别处，请调整对应项。`qianduan/deploy/roadsense.service` 指向你曾使用的共享 Python 虚拟环境路径，务必在不同服务器上检查 `ExecStart`。使用 `sudo systemctl disable roadsense` 可取消开机启动，但不会停止正在运行的服务。

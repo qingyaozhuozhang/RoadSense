@@ -49,6 +49,35 @@
 .rs-map-switch{display:none!important}
 .sender-header{border-bottom:1px solid #3978a22c;padding-bottom:17px}
 .sender-hero{background:linear-gradient(128deg,#0c2e52,#123b63 60%,#0c2649);border-color:#4c91c055}
+/* Photo-assisted inspection lives under the existing mobile GPS cards. */
+.sender-photo-card{border:1px solid #bfe1ee;box-shadow:0 18px 44px #03172945,0 0 0 1px #13b5ce14}
+.sender-photo-intro{color:#66859b;font-size:13px;line-height:1.8;margin:-4px 0 16px}
+.sender-photo-frame{overflow:hidden;min-height:188px;border:1px dashed #97cfe1;background:radial-gradient(circle at 80% 0%,#dcf9f4,#ecf7fc 65%);border-radius:16px;display:grid;place-items:center}
+#sender-photo-placeholder{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;padding:28px 18px;text-align:center}
+#sender-photo-placeholder .sender-photo-camera{font-size:38px;line-height:1;color:#2481bd}
+#sender-photo-placeholder strong{font-size:16px;color:#123f64}
+#sender-photo-placeholder small{font-size:12px;color:#648da8;line-height:1.6}
+#sender-photo-placeholder[hidden],#sender-photo-preview[hidden],#sender-photo-annotated[hidden],#sender-photo-result[hidden]{display:none!important}
+#sender-photo-preview{display:block;width:100%;max-height:300px;object-fit:contain;background:#e5edf2}
+.sender-photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.sender-photo-actions label{display:flex;align-items:center;justify-content:center;min-height:46px;border-radius:12px;background:linear-gradient(100deg,#117ddb,#1d5bc2);color:#fff;font-weight:800;font-size:13px;text-align:center;padding:8px;cursor:pointer}
+.sender-photo-actions label.sender-photo-secondary{background:#eaf4fb;color:#255d84;border:1px solid #d8e8f3}
+.sender-photo-filename{font-size:12px;color:#648ba7;overflow-wrap:anywhere;margin:12px 1px}
+.sender-photo-submit{width:100%;min-height:49px;border:0;border-radius:13px;background:linear-gradient(110deg,#059dba,#137ad4);font-size:14px;font-weight:800;color:#fff;box-shadow:0 7px 20px #0e93c335;cursor:pointer}
+.sender-photo-submit:disabled{opacity:.52;cursor:not-allowed;box-shadow:none}
+.sender-photo-status{font-size:12px;color:#3983a3;line-height:1.7;margin:12px 3px 0}
+.sender-photo-status.is-error{color:#c63552;font-weight:650}
+.sender-photo-result{margin-top:20px;padding-top:18px;border-top:1px solid #dceaf2}
+.sender-photo-result-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.sender-photo-result-head strong{font-size:16px;color:#133d61}.sender-photo-result-head span{font-weight:900;font-size:16px}
+#sender-photo-annotated{display:block;width:100%;height:auto;max-height:390px;object-fit:contain;border-radius:13px;background:#eff5fa}
+.sender-photo-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:12px 0}
+.sender-photo-stats>div{display:grid;gap:6px;padding:11px 8px;border-radius:10px;background:#f1f8fc;border:1px solid #e0ecf5}
+.sender-photo-stats small{font-size:10px;color:#7695af}.sender-photo-stats strong{font-size:13px;color:#103d60;overflow-wrap:anywhere}
+.sender-photo-detection{display:flex;justify-content:space-between;gap:8px;padding:10px 4px;border-bottom:1px solid #e4ecf5;font-size:12px;color:#476b89}
+.sender-photo-detection strong{color:#176b9a}
+.sender-photo-archived{border:1px solid #c1eadc;border-radius:10px;background:#eafbF5;padding:11px 12px;font-size:12px;color:#167f67;line-height:1.6}
+@media(max-width:385px){.sender-photo-actions{grid-template-columns:1fr}.sender-photo-stats{grid-template-columns:1fr 1fr}}
 
 
 /* Mobile readability */

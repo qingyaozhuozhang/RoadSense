@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}在线设备画面{% endblock %}
+{% block breadcrumb %}在线设备{% endblock %}
+{% block content %}
+<div class="rs-admin-card"><h2>已授权设备 · 实时画面</h2>
+<p class="rs-small">管理员显示所有登记设备，普通用户仅显示所属设备。画面由对应设备独立上传，不会互相覆盖。</p></div>
+<div class="rs-grid">
+{% for dev in devices %}
+<section class="rs-admin-card">
+  <h2>{{ dev.name | e }} <small>({{dev.device_id | e}})</small></h2>
+  {% if dev.online %}<img class="rs-gallery-shot" loading="lazy" alt="{{dev.name | e}} 摄像头" src="{{ url_for('video_feed', device_id=dev.device_id) }}">
+  {% else %}<div class="rs-gallery-shot" style="display:grid;place-items:center;color:#8fb2c6">设备离线 · 画面未连接</div>{% endif %}
+  <p class="rs-small">设备归属用户 ID：{{ dev.owner_id }} · 编号：{{dev.device_id | e}}</p>
+  <a class="rs-button" href="{{ url_for('detection',device_id=dev.device_id) }}">进入独立巡检控制台</a>
+</section>
+{% else %}
+<div class="rs-admin-card">暂无分配给你的设备。请联系管理员添加设备并绑定账号。</div>
+{% endfor %}
+</div>
+{% endblock %}

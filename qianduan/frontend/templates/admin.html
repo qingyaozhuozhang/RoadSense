@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}管理员控制中心{% endblock %}
+{% block breadcrumb %}管理员控制中心{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin-records.css', v='20261029') }}">{% endblock %}
+{% block content %}
+<div class="rs-admin-card"><h2>设备与账号管理</h2>
+<p class="rs-small"><strong>怎么使用：</strong>① 普通用户先注册账号；② 管理员在左侧填写设备名称和归属账号（设备编号可留空自动生成）；③ 点击添加设备；④ 下载完整设备 <code>.env</code> 文件，备份并覆盖该树莓派的 <code>houduan/.env</code>；⑤ 树莓派启动 <code>python core.py</code>，该账号即可查看自己的巡检画面。已有主设备 <code>pi-main</code> 不需要重复添加，可以直接在右侧重新分配归属。</p>
+<p class="rs-small">设备令牌仅在添加或主动轮换后生成一次。请立即下载 .env，妥善保管；请勿截图公开或提交到 GitHub；一台设备使用一个独立令牌。</p>
+<div class="rs-grid"><div><input id="dev-id" placeholder="设备编号（可不填，自动生成）" maxlength="48">
+<input id="dev-name" placeholder="设备显示名称"><input id="dev-owner" placeholder="归属账号用户名或手机号">
+<button id="dev-create">添加设备</button></div>
+<div><input id="assign-id" placeholder="已有设备编号"><input id="assign-owner" placeholder="要分配给的账号">
+<button id="dev-assign">变更设备归属</button></div></div>
+<div class="rs-admin-token-result"><pre id="device-result" class="rs-code-output" aria-live="polite">添加设备或轮换令牌后，可下载与 houduan 原配置字段一致的完整 .env 文件，并直接覆盖对应树莓派的 houduan/.env。</pre><button id="download-device-config" type="button" hidden>下载设备 .env 配置</button></div>
+</div>
+<div class="rs-admin-card"><h2>已登记设备</h2><table class="rs-table" id="device-table"><thead><tr><th>编号</th><th>名称</th><th>归属用户 ID</th><th>状态</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+<div class="rs-admin-card"><h2>用户权限管理</h2><p class="rs-small">普通用户注册后默认无管理员权限。可将普通用户升级为管理员、设置未分配设备账号的手机定位权限、重置普通用户密码或删除无设备、无历史记录的账号。数据库不保存明文密码，因此无法查询旧密码。</p>
+<div class="rs-grid"><input id="promote-username" placeholder="需要升级为管理员的已注册用户名"><button id="promote-user" type="button">升级为管理员</button></div>
+<table class="rs-table" id="user-table"><thead><tr><th>ID</th><th>用户名</th><th>角色</th><th>独立手机定位</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+<div class="rs-admin-card"><h2>道路损伤数据库管理</h2>
+<p class="rs-small">展示归档名称、图片、来源设备、账号与时间，点击缩略图查看大图。仅管理员可编辑或删除；删除保留原照片供审计。</p><p id="admin-record-summary" class="rs-small">正在读取数据库…</p>
+<div id="record-table" style="overflow-x:auto"></div></div>
+<div class="rs-admin-card"><h2>管理员审计日志（最近100条）</h2><pre id="audit-view" class="rs-code-output"></pre></div>
+{% endblock %}
+{% block page_scripts %}<script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>{% endblock %}

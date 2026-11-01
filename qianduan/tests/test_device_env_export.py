@@ -19,7 +19,7 @@ class DownloadedDeviceEnvTest(unittest.TestCase):
             'ORT_PROVIDER', 'ORT_THREADS', 'VIDEO_RENDER_FPS', 'VIDEO_UPLOAD_FPS',
             'VIDEO_UPLOAD_CONCURRENCY', 'VIDEO_JPEG_QUALITY', 'VIDEO_OUTPUT_WIDTH',
             'DIRECT_VIDEO_ENABLED', 'DIRECT_VIDEO_BIND', 'DIRECT_VIDEO_PORT',
-            'GPS_PORT', 'GPS_BAUD', 'PI_LAN_HOST', 'DIRECT_VIDEO_PUBLIC_HOST',
+            'GPS_PORT', 'GPS_BAUD', 'GPS_UPLOAD_INTERVAL', 'PHONE_POLL_INTERVAL', 'PI_LAN_HOST', 'DIRECT_VIDEO_PUBLIC_HOST',
             'PI_SSL_CERT_FILE', 'PI_SSL_KEY_FILE'
         }
         lines = {line.split('=', 1)[0]: line.split('=', 1)[1] for line in sample.splitlines()
@@ -32,6 +32,8 @@ class DownloadedDeviceEnvTest(unittest.TestCase):
         self.assertEqual(lines['AMAP_JS_SECRET'], 'sample-amap-secret')
         self.assertEqual(lines['GPS_PORT'], '/dev/serial0')
         self.assertEqual(lines['GPS_BAUD'], '38400')
+        self.assertEqual(lines['GPS_UPLOAD_INTERVAL'], '0.5')
+        self.assertEqual(lines['PHONE_POLL_INTERVAL'], '0.5')
         self.assertEqual(lines['VIDEO_UPLOAD_CONCURRENCY'], '4')
         self.assertTrue(sample.endswith('\n'))
 

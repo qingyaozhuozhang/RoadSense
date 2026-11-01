@@ -22,13 +22,13 @@ from video_pipeline import LatestJpeg, make_preview_server
 
 try:
     import serial
-    from rpi.gps_rmc_reader import parse_rmc_from_line
+    from rpi.neo_f10n_simple import parse_rmc
 
     RPI_GPS_AVAILABLE = True
 except ImportError:
     RPI_GPS_AVAILABLE = False
     serial = None
-    parse_rmc_from_line = None
+    parse_rmc = None
 
 # ==========================================
 # ⚙️ 第一部分：全局配置区
@@ -45,7 +45,7 @@ if _pi_env.exists():
             if _k.strip() in {
                 'AMAP_JS_KEY', 'AMAP_JS_SECRET', 'CLOUD_BASE_URL', 'PI_LAN_HOST',
                 'DEVICE_TOKEN', 'DEVICE_ID', 'CAMERA_INDEX', 'CAMERA_SCAN_INTERVAL',
-                'GPS_PORT', 'GPS_BAUD', 'YOLO_MODEL', 'SAVE_DIR',
+                'GPS_PORT', 'GPS_BAUD', 'GPS_UPLOAD_INTERVAL', 'PHONE_POLL_INTERVAL', 'YOLO_MODEL', 'SAVE_DIR',
                 'ORT_PROVIDER', 'ORT_THREADS', 'VIDEO_RENDER_FPS',
                 'VIDEO_UPLOAD_FPS', 'VIDEO_UPLOAD_CONCURRENCY', 'VIDEO_JPEG_QUALITY', 'VIDEO_OUTPUT_WIDTH',
                 'DIRECT_VIDEO_ENABLED', 'DIRECT_VIDEO_BIND',
@@ -66,7 +66,10 @@ DEVICE_ID = os.environ.get('DEVICE_ID','pi-main').strip()
 HTTP_HEADERS = {'X-RoadSense-Token': DEVICE_TOKEN, 'X-RoadSense-Device-ID': DEVICE_ID} if DEVICE_TOKEN else {}
 
 
-HEARTBEAT_INTERVAL = 1.0
+# GPS/position state is uploaded via /update_stream on this interval.  This is
+# the reporting interval, not a promise of GNSS sensor sample frequency.
+HEARTBEAT_INTERVAL = max(0.2, min(float(os.environ.get('GPS_UPLOAD_INTERVAL', '0.5')), 5.0))
+PHONE_POLL_INTERVAL = max(0.2, min(float(os.environ.get('PHONE_POLL_INTERVAL', '0.5')), 5.0))
 # Capture, browser preview and network upload have independent frame rates.
 # A 20-25 FPS browser feed feels far smoother than the previous fixed 8 FPS.
 VIDEO_RENDER_FPS = max(5.0, min(float(os.environ.get('VIDEO_RENDER_FPS', '25')), 40.0))
@@ -87,8 +90,8 @@ MAP_WIDTH, MAP_HEIGHT = 800, 600
 ZOOM_LEVEL = 16
 ZONE_RADIUS = 20
 
-RPI_GPS_PORT = os.environ.get("GPS_PORT", "/dev/ttyUSB0")
-RPI_GPS_BAUD = int(os.environ.get("GPS_BAUD", "9600"))
+RPI_GPS_PORT = os.environ.get("GPS_PORT", "/dev/serial0")
+RPI_GPS_BAUD = int(os.environ.get("GPS_BAUD", "38400"))
 RPI_GPS_TIMEOUT = 1.0
 CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "0"))
 CAMERA_SCAN_INTERVAL = float(os.environ.get("CAMERA_SCAN_INTERVAL", "5"))
@@ -455,17 +458,40 @@ class YOLO_ONNX_Engine:
 # ==========================================
 
 def run_gps_reader() -> None:
-    if not RPI_GPS_AVAILABLE: return
-    try:
-        ser = serial.Serial(RPI_GPS_PORT, RPI_GPS_BAUD, timeout=RPI_GPS_TIMEOUT)
-        while True:
-            line_bytes = ser.readline()
-            if not line_bytes: continue
-            fix = parse_rmc_from_line(line_bytes.decode("ascii", errors="ignore"))
-            if fix and fix.status == "A" and fix.latitude_deg is not None and fix.longitude_deg is not None:
-                set_location(fix.latitude_deg, fix.longitude_deg, source="hardware")
-    except Exception as exc:
-        print(f'[硬件GPS] 串口读取失败：{exc}。请检查 GPS_PORT={RPI_GPS_PORT}、权限、波特率和设备连接。',flush=True)
+    """Read NEO-F10N UART using the user's strict NMEA-RMC parser.
+
+    Retry disconnected UART automatically.  Only valid RMC fixes update the
+    location manager; the cloud heartbeat publishes the latest *unexpired*
+    position every GPS_UPLOAD_INTERVAL seconds.
+    """
+    if not RPI_GPS_AVAILABLE:
+        print('[硬件GPS] 未安装 pyserial 或 NEO-F10N 驱动无法导入，手机备用定位仍可用', flush=True)
+        return
+    print(f'[硬件GPS] NEO-F10N: {RPI_GPS_PORT} / {RPI_GPS_BAUD}bps / 8N1', flush=True)
+    last_fix_notice = 0.0
+    last_wait_notice = time.monotonic()
+    while True:
+        try:
+            with serial.Serial(RPI_GPS_PORT, RPI_GPS_BAUD, timeout=1,
+                               bytesize=8, parity='N', stopbits=1) as receiver:
+                print('[硬件GPS] 串口已连接，等待有效 RMC 定位', flush=True)
+                while True:
+                    position = parse_rmc(receiver.readline())
+                    if position is not None:
+                        latitude, longitude, utc_time = position
+                        set_location(latitude, longitude, source='hardware')
+                        now = time.monotonic()
+                        if now - last_fix_notice >= 2.0:
+                            print(f'[硬件GPS] WGS84 纬度={latitude:.7f} 经度={longitude:.7f} '
+                                  f'GPS_UTC={utc_time}', flush=True)
+                            last_fix_notice = now
+                        last_wait_notice = now
+                    elif time.monotonic() - last_wait_notice >= 10.0:
+                        print('[硬件GPS] 暂无有效卫星定位；手机定位可作为备用', flush=True)
+                        last_wait_notice = time.monotonic()
+        except (serial.SerialException, OSError) as exc:
+            print(f'[硬件GPS] 串口故障：{exc}；2 秒后重新连接', flush=True)
+            time.sleep(2.0)
 
 
 def run_command_polling() -> None:
@@ -496,11 +522,15 @@ def run_phone_location_polling() -> None:
                     set_location(data['latitude'], data['longitude'], source='phone')
         except (requests.RequestException, ValueError, KeyError):
             pass
-        time.sleep(2)
+        time.sleep(PHONE_POLL_INTERVAL)
 
 
 def run_heartbeat_loop() -> None:
-    """Device/location heartbeat only. Video is sent on a separate channel."""
+    """Report latest selected WGS84 position every 0.5s (configurable).
+
+    This is independent of the separate video upload channel.  If neither
+    hardware nor phone has a fresh fix, coordinates are blank, never (0,0).
+    """
     while True:
         time.sleep(HEARTBEAT_INTERVAL)
         lon,lat=get_location()

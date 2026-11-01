@@ -44,3 +44,21 @@ Android Studio 打开 `Android_Studio/`，完成同步后，在 Terminal 运行�
 ### 首次打开项目时 Gradle Wrapper 提示缺失
 
 首次运行 `Setup-Windows.ps1` 下载标准的 Gradle Wrapper JAR；如果访问 GitHub 下载失败，可以复制之前已经成功构建过的 Android Studio 项目中相同版本的 `gradle/wrapper/gradle-wrapper.jar`。本交付包没有附带已验证的 Wrapper JAR，不能声称下载后无需任何工具准备就可构建。
+
+
+## 7. 首次安装：用户填写哪些配置
+
+Android 不读取 `qianduan/.env` 或 `houduan/.env`，不要复制设备令牌进 APK。用户设置 Android 的云端 URL 与高德 Key 时，建议在项目根目录 `local.properties` **追加**（保留由 Android Studio 写入的 `sdk.dir`）：
+
+```properties
+roadsense.cloudBaseUrl=http://39.102.84.218:5000
+roadsense.amapAndroidKey=填写你在高德开放平台的Android应用Key
+```
+
+这两项也可以直接使用 `app/build.gradle.kts` 中保留的现有默认配置；更换项目包名、发布签名 SHA1 或高德应用后，必须重新创建对应 Android 类型 Key。
+
+> 编译前确认 Android Studio 中 Gradle JDK 为 21。第一次导入缺少 Wrapper JAR 时，执行 `Setup-Windows.ps1` 或从已有可编译项目复制 `gradle/wrapper/gradle-wrapper.jar`。正式 APK 需要原有 JKS 签名文件；此包不包含 JKS。
+
+**实际使用流程**：先确保云端运行，安装 RoadSense → 注册/登录 → 在工作台选择本人设备（未分配设备的普通用户须由管理员另外授权定位）→ “开始定位” → 实时位置与地图更新 → 拍照 → 云端 YOLO 预览 → “确认归档”（要求有效实时坐标）→ “停止定位”。
+
+NEO-F10N 是树莓派侧的硬件设备；Android App 不需要加载任何 Python GPS 驱动，其原生定位上传机制不受本次替换影响。

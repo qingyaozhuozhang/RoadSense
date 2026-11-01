@@ -113,3 +113,27 @@ python -m unittest discover -s tests -v
 ### 已配置的部署路径
 
 云端 `.env` 默认将模型指向 `/home/admin/RoadSense/qianduan/models/best.onnx`，数据目录为 `/home/admin/RoadSense/qianduan/data`；你的系统若安装在别处，请调整对应项。`qianduan/deploy/roadsense.service` 指向你曾使用的共享 Python 虚拟环境路径，务必在不同服务器上检查 `ExecStart`。使用 `sudo systemctl disable roadsense` 可取消开机启动，但不会停止正在运行的服务。
+
+
+## NEO-F10N 边缘位置同步（本版）
+
+无需在阿里云安装 GPS 串口驱动。新版 `houduan` 通过 `/update_stream` **每 0.5 秒**发送最新有效位置状态；云端原有接口即可接收。硬件 GPS 优先、Android 手机备用。
+
+管理员在 **设备与数据管理** 添加或轮换设备后，可下载完整的 `houduan/.env`，模板位于 `qianduan/deploy/houduan.env.template`，已包含 `GPS_UPLOAD_INTERVAL=0.5`、`PHONE_POLL_INTERVAL=0.5`。
+
+第一次部署请检查本目录 `.env` 的 `HOST`、`PORT`、`ROADSENSE_DATA_DIR`、`PHONE_YOLO_MODEL`、`ROADSENSE_SECRET_KEY`、`AMAP_JS_KEY`、`AMAP_JS_SECRET`、`BOOTSTRAP_DEVICE_ID` 和 `DEVICE_TOKEN`：
+
+- 本交付包保留了现有配置；切换服务器后 **修改目录路径与公网地址**，不能把旧服务器的绝对路径视为通用路径。
+- `DEVICE_TOKEN` 在云端是首台设备初始化令牌；新设备由管理员页面生成独立令牌。
+- SQLite 的历史数据与图片只在实际服务器 `qianduan/data/`，源码包中的数据不能代替线上数据库；更新时要先备份，不要覆盖旧数据。
+
+用 Ubuntu 常驻方式运行（**不设置开机自启**）：
+
+```bash
+sudo systemctl disable roadsense  # 若曾启用开机自启
+sudo systemctl start roadsense    # 手动启动，关闭 Workbench 后持续运行
+sudo systemctl status roadsense --no-pager
+sudo systemctl stop roadsense     # 手动关闭
+```
+
+如果尚未安装服务文件，按 `deploy/roadsense.service` 中实际 Python 虚拟环境路径创建服务；第一次建议先 `python server/app.py` 验证依赖。

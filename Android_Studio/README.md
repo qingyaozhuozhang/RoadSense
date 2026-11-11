@@ -1,64 +1,74 @@
-# Android_Studio · RoadSense 手机端
+# RoadSense 移动巡检终端技术与使用说明
 
-Kotlin Android App，桌面名称为 **RoadSense**。提供道路智能巡检工作台、高德原生手机定位、照片识别/确认归档、账号切换和服务器离线跑酷页面。
+RoadSense Android 应用面向道路现场巡检，提供账号登录、设备关联、原生位置获取、实时地图展示、道路拍照识别和人工确认归档。移动端通过 Flask API 与云端管理平台通信，使用账号登录会话进行身份认证，不直接保存树莓派设备令牌。
 
-## 1. 开发环境
+## 1. 功能组成
 
-- Windows 10/11 或兼容系统，Android Studio；Gradle JDK 推荐 **21**。
+| 功能模块 | 主要内容 |
+|---|---|
+| 账号认证 | 登录、退出及账号切换，接入云端用户权限体系 |
+| 设备关联 | 展示当前账号及可访问的巡检设备，关联设备定位或独立移动巡检 |
+| 实时定位 | 采用高德 Android 定位 SDK 获取位置、精度和状态 |
+| 后台定位 | 通过 Android 前台服务持续获取与上传可用位置 |
+| 地图展示 | 在应用内展示位置与地图信息 |
+| 道路拍照识别 | 拍摄或选择照片，上传云端执行 YOLOv8-OBB 分析 |
+| 确认归档 | 查看损伤检测预览，确认后将图片、等级与有效位置保存云端 |
+| 离线页面 | 云端暂时不可达时展示应用内置离线交互页面 |
+
+## 2. 移动定位机制
+
+应用使用高德定位 SDK 的高精度模式获取定位坐标，采用 **WGS84 坐标输出方式**供云端统一处理。定位 SDK 的配置更新间隔为 **1 秒**；前台服务以 **0.5 秒**为目标上传周期，将最近一次尚未过期的有效定位数据发送到云端。因此，上传周期不等于每次均生成一条新的卫星或融合定位结果。
+
+后台定位通过系统前台服务实现，启动后显示持续运行通知，支持在应用进入后台或屏幕熄灭时保持定位服务。实际连续运行能力受系统定位权限、设备厂商电池策略、网络及系统资源管理影响。用户可在应用中手动停止定位；移除应用任务或服务终止后不会未经用户操作自动恢复上传。
+
+位置上传时，云端核验账号会话、移动定位权限、经纬度合法性及定位精度；所上传数据与当前登录账号关联。用户已分配设备时，可向所属设备提供备用位置。
+
+## 3. 账号及权限
+
+移动端遵循云端统一授权规则：
+
+- **管理员**：可使用移动定位及拍照归档功能。
+- **已分配设备的普通用户**：可使用手机定位，并将位置关联本人所属巡检设备。
+- **无设备且已获得独立授权的普通用户**：可执行独立定位和手机照片归档，但不因此获得其他用户设备访问权限。
+- **无设备且未获授权的普通用户**：不允许开始定位，应用展示权限提示信息。
+
+云端在定位和归档接口执行实际权限核验，移动端仅负责交互与数据采集。
+
+## 4. 道路拍照识别与归档
+
+移动端支持直接拍照或从相册选取道路图片。图片上传至云端后，由 `qianduan/models/best.onnx` 执行 YOLOv8-OBB 推理，返回裂缝、坑洞的检测框与损伤等级，供用户核对。
+
+手机照片使用**检测框面积占图像面积的比例**进行损伤等级划分，不使用树莓派双目视觉距离权重。识别预览与记录写入相互独立；只有在用户执行**确认归档**且账号授权、定位有效性满足要求时，云端才保存对应记录和图像。
+
+## 5. 使用流程
+
+1. 启动 RoadSense，完成所需隐私确认及系统权限授权。
+2. 使用云端注册或分配的账号登录。
+3. 查看账号关联的巡检设备和定位授权状态。
+4. 点击“开始定位”，在移动端查看经纬度、定位精度与位置地图。
+5. 拍摄路面照片或从相册选择图片，查看云端 YOLO 检测预览。
+6. 核对识别结果并执行“确认归档”，由云端保存合法记录。
+7. 巡检结束后点击“停止定位”，需要切换账号时先结束当前定位服务。
+
+## 6. 工程环境与构建
+
+- Android Studio，兼容 Windows 10/11 的 Android 开发环境。
+- Gradle JDK **21**、Gradle **8.13**。
 - Android SDK Platform 35；项目 `minSdk 26`、`targetSdk 35`。
-- Gradle 8.13；使用 Android Studio **File → Sync Project with Gradle Files** 同步。
-- 已安装 Android SDK，且 `local.properties` 中具有 Android Studio 写入的 `sdk.dir`。
+- Android Studio 生成的 `local.properties` 应包含本机 `sdk.dir`。
 
-## 2. 项目当前配置
-
-本包已在 `app/build.gradle.kts` 中保留原有 `CLOUD_BASE_URL`（HTTP 5000）与高德 Android 定位 Key，可与现有阿里云配套，**不用重新填写 Key**。但发布到 GitHub Public 时这些值同样公开。Gradle 的 Android SDK 路径依赖 Android Studio 自动生成的本机 `local.properties`，该文件无法通用，不属于云端配置。
-
-`gradle/wrapper/gradle-wrapper.properties` 默认使用 Gradle 8.13 官方发行 URL，避免把原 Windows 电脑的绝对 ZIP 路径写入 GitHub。网络受限时，可在自己的电脑将它改为本地 ZIP 路径。当前完整包**缺少 `gradle/wrapper/gradle-wrapper.jar`**（历史工程包也没有）；可运行 `Setup-Windows.ps1` 下载，或从你已成功编译的原工程复制相同的 JAR。私人的发布 JKS 证书同样不在源码包里，Release 签名应继续用 Windows 原有证书。
-
-## 3. 编译和安装
-
-Android Studio 打开 `Android_Studio/`，完成同步后，在 Terminal 运行：
+在 Android Studio 打开 `Android_Studio/` 并完成 Gradle 同步后，可以构建调试 APK：
 
 ```powershell
 .\gradlew.bat :app:assembleDebug
 ```
 
-生成的调试版一般位于 `app/build/outputs/apk/debug/app-debug.apk`。生成已签名正式 APK：**Build → Generate Signed App Bundle / APK → APK → release**，选择你自己保存的 JKS 证书。本包不包含 `.jks` 发布私钥和签名密码。生成 Release APK 时需要自己的 JKS。
+APK 通常输出至 `app/build/outputs/apk/debug/`。正式版本需通过签名配置生成 Release APK；签名证书应由项目部署人员安全保管。
 
-## 4. 使用流程
+Android 访问的云端地址和高德 Android Key 可由 `app/build.gradle.kts` 中的配置提供，也可以在本机 `local.properties` 配置 `roadsense.cloudBaseUrl` 与 `roadsense.amapAndroidKey`。高德 Android Key 应匹配应用包名及发布签名 SHA1。若 Gradle Wrapper JAR 未配置，可使用工程提供的 `Setup-Windows.ps1` 完成环境准备。
 
-1. 确认云端已启动；启动 App，使用现有账号登录。
-2. 查看工作台定位状态，点击“开始定位”开始上报；点击“停止定位”停止。
-3. 管理员账号可直接定位；普通用户若已分配设备，可使用对应设备；未分配设备者默认无权限，需要管理员在云端单独授权。**不增加灰色“禁用”按钮**，无权限时点击会收到明确提示。
-4. 拍摄或选择道路图片，进行云端 YOLO 预览；检查结果后点击“确认归档”，必须有有效手机定位和允许的账号权限。
-5. 手机账号只访问自己的设备；无设备且已获得权限者可以上传个人定位/照片记录，但不能访问其他用户设备。
-6. 服务器暂时不可达时显示内置跑酷页面；恢复服务后进入正常页面，定位不会未经用户操作自动重新开启。
+## 7. 运行条件与安全要求
 
-## 5. 注意事项
+Android 设备需具备定位、相机和网络访问能力，并依据系统版本授予相关权限。长时间后台定位的实际表现应以设备实测为准。
 
-- HTTP 地址只适合封闭/短期调试；实际公网账号登录建议配置 HTTPS。
-- Android 后台定位需要按系统提示授予必要权限，厂商省电策略可能限制长期定位，不保证所有机型息屏都能保持固定周期。
-- `AndroidManifest.xml` 声明权限及服务；请以手机实际授权和日志为准，不要将静态编译成功等同于后台定位实测通过。
-- 登录凭据和账号权限由云端验证，不把树莓派 `DEVICE_TOKEN` 放进 APK。
-
-### 首次打开项目时 Gradle Wrapper 提示缺失
-
-首次运行 `Setup-Windows.ps1` 下载标准的 Gradle Wrapper JAR；如果访问 GitHub 下载失败，可以复制之前已经成功构建过的 Android Studio 项目中相同版本的 `gradle/wrapper/gradle-wrapper.jar`。本交付包没有附带已验证的 Wrapper JAR，不能声称下载后无需任何工具准备就可构建。
-
-
-## 7. 首次安装：用户填写哪些配置
-
-Android 不读取 `qianduan/.env` 或 `houduan/.env`，不要复制设备令牌进 APK。用户设置 Android 的云端 URL 与高德 Key 时，建议在项目根目录 `local.properties` **追加**（保留由 Android Studio 写入的 `sdk.dir`）：
-
-```properties
-roadsense.cloudBaseUrl=http://39.102.84.218:5000
-roadsense.amapAndroidKey=填写你在高德开放平台的Android应用Key
-```
-
-这两项也可以直接使用 `app/build.gradle.kts` 中保留的现有默认配置；更换项目包名、发布签名 SHA1 或高德应用后，必须重新创建对应 Android 类型 Key。
-
-> 编译前确认 Android Studio 中 Gradle JDK 为 21。第一次导入缺少 Wrapper JAR 时，执行 `Setup-Windows.ps1` 或从已有可编译项目复制 `gradle/wrapper/gradle-wrapper.jar`。正式 APK 需要原有 JKS 签名文件；此包不包含 JKS。
-
-**实际使用流程**：先确保云端运行，安装 RoadSense → 注册/登录 → 在工作台选择本人设备（未分配设备的普通用户须由管理员另外授权定位）→ “开始定位” → 实时位置与地图更新 → 拍照 → 云端 YOLO 预览 → “确认归档”（要求有效实时坐标）→ “停止定位”。
-
-NEO-F10N 是树莓派侧的硬件设备；Android App 不需要加载任何 Python GPS 驱动，其原生定位上传机制不受本次替换影响。
+公网部署应使用 HTTPS 保护账号登录、位置数据和照片传输。应用仅通过登录会话和业务接口访问云端，不直接读取服务器 SQLite 文件或持有树莓派独立设备令牌。

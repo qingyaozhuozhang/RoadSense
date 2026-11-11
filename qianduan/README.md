@@ -1,139 +1,146 @@
-# qianduan · RoadSense 云端服务
+# RoadSense 云端管理平台技术与部署说明
 
-本目录包含统一 Web 控制台、Flask API、SQLite 持久化、多设备管理、照片 YOLO 推理及设备定位服务。
+云端管理平台是 RoadSense 的集中业务服务节点，基于 **Flask + SQLite + HTTP API** 构建，负责用户认证、设备权限管理、巡检指令下发、视频与定位信息接收、道路损伤记录归档以及网页可视化。同时通过 **ONNX Runtime** 处理 Android 移动巡检终端提交的道路照片。
 
-## 1. 运行要求
+## 1. 系统组成
 
-- Ubuntu 22.04/24.04 或兼容 Linux；Python 3.10+。
-- `models/best.onnx` 存在；云端执行手机照片的 ONNX 推理。
-- 至少一个可访问的 TCP 端口（示例 5000），服务器须有写入 `data/` 的权限。
+| 功能模块 | 主要职责 | 实现技术 |
+|---|---|---|
+| 用户认证 | 登录、注册、验证码、会话管理及密码哈希校验 | Flask Session、Werkzeug、SQLite |
+| 权限管理 | 管理员/普通用户分级授权、设备归属、移动定位授权 | 服务端访问控制、SQLite |
+| 设备管理 | 多设备登记、设备令牌认证、设备与账号关联、在线状态和远程控制 | Flask HTTP API、设备独立运行状态 |
+| 道路巡检 | 视频和检测结果接收、巡检状态管理、位置同步 | HTTP API、服务端状态管理 |
+| 图像分析 | 手机照片的 YOLOv8-OBB 推理、旋转框绘制与损伤分级 | OpenCV、ONNX Runtime |
+| 数据归档 | 道路损伤记录、来源信息、照片路径及审计信息持久化 | SQLite、文件存储 |
+| 数据可视化 | 设备监控、损伤等级统计、历史记录及地理空间展示 | HTML、CSS、JavaScript、高德地图 JavaScript API |
 
-## 2. 安装与配置
+网页使用 **B/S 架构**。树莓派与 Android 作为独立通信节点，使用身份凭据及业务接口与云端交互。
+
+## 2. 用户、设备与权限控制
+
+### 2.1 角色权限
+
+系统设有管理员与普通用户两个角色。
+
+| 业务功能 | 管理员 | 普通用户 |
+|---|---|---|
+| 查看设备范围 | 全部设备 | 本人所属设备 |
+| 登记、分配与管理设备 | 允许 | 不允许 |
+| 用户管理与移动定位授权 | 允许 | 不允许 |
+| 巡检控制与视频查看 | 具备相应系统管理权限 | 仅本人所属设备 |
+| 查看道路损伤记录和照片 | 全部记录 | 本人所属设备记录及本人独立手机归档记录 |
+| 移动端定位与拍照归档 | 允许 | 依据设备归属或独立授权 |
+
+### 2.2 设备归属授权
+
+每台物理巡检设备通过唯一 `DEVICE_ID` 标识，并使用独立 `DEVICE_TOKEN` 对设备接口进行认证。云端保存设备与所属用户的关系，普通用户仅能操作与其关联的设备。当前设备注册机制约束**一名普通用户最多关联一台物理巡检设备**。
+
+设备令牌仅用于设备侧接口认证，不应作为普通用户登录凭据，也不应放入 Android 应用。设备凭据的有效性及账号对设备的访问范围均由 Flask 服务端核验。
+
+### 2.3 移动定位授权
+
+移动端定位和拍照归档遵循以下规则：
+
+1. 管理员具有移动定位使用权限。
+2. 普通用户拥有已分配设备时，可以将手机定位信息关联到所属设备。
+3. 未分配设备的普通用户须由管理员单独授予移动定位权限，方可独立使用手机进行定位和照片归档。
+4. 手机定位上传必须具备有效登录会话与合法定位数据；云端依据账号身份、授权状态和设备归属决定数据关联方式。
+5. 无设备用户独立生成的照片记录归属于该账号，不会自动获得其他设备的访问权限。
+
+SQLite 保存用户角色、授权标记及设备归属；Flask 在读取设备、上传位置、归档图片和获取历史记录等接口执行实际权限判断。网页隐藏操作入口不是安全边界，服务端仍会检查请求权限。
+
+## 3. 数据持久化结构
+
+运行数据存放于 `ROADSENSE_DATA_DIR` 指定目录，默认位于项目的 `data/` 下。
+
+| 文件或目录 | 存储内容 |
+|---|---|
+| `accounts.sqlite3` | 用户账号、密码哈希、角色与移动定位授权状态 |
+| `devices.sqlite3` | 设备标识、设备名称、所属账号及令牌哈希 |
+| `records.sqlite3` | 道路损伤记录、设备与用户来源、位置、等级及操作审计信息 |
+| `images/` | 道路损伤图像文件，数据库保存关联的文件名或元数据 |
+
+归档记录可以关联设备账号或独立移动巡检账号。设备巡检和手机照片归档分别保存来源类型，以支持按账号、设备、时间和损伤等级查询。照片访问接口同样执行账号与设备范围校验。
+
+SQLite 支持轻量级持久化与事务管理；多进程部署时须评估共享运行状态和数据并发访问方式。
+
+## 4. 业务通信流程
+
+**边缘设备通信**：边缘设备经设备身份认证访问巡检指令接口；上传视频帧与位置状态，并在满足巡检状态和有效定位等条件时上传损伤归档数据。
+
+**移动端通信**：Android 通过登录会话访问定位授权、位置上传、照片预览和确认归档接口。照片由云端 YOLOv8-OBB 模型识别；预览结果不自动形成正式档案，归档阶段再次校验账号权限和定位有效性。
+
+**管理平台通信**：浏览器获取本人权限范围内的设备状态、视频画面、道路损伤统计与地图坐标。管理员具备设备注册、归属调整、授权设置和记录管理接口。
+
+### 主要接口
+
+| 接口 | 功能 |
+|---|---|
+| `GET /api/health` | 服务状态检查 |
+| `GET /api/command` | 边缘设备获取巡检控制状态 |
+| `POST /update_stream` | 设备实时画面与状态上传 |
+| `POST /upload` | 边缘检测事件入库 |
+| `GET /api/phone_location` | 授权设备读取所属账号的手机备用位置 |
+| `POST /api/receive_location` | Android 定位上传 |
+| `GET /api/mobile/permission` | 查询移动定位授权状态 |
+| `POST /api/phone/preview` | 手机照片识别预览 |
+| `POST /api/phone/archive` | 手机识别结果确认归档 |
+| `GET /api/records` | 在访问权限范围内查询归档数据 |
+
+接口是否可调用取决于相应的登录会话、设备令牌和授权条件。
+
+## 5. 云端照片识别
+
+云端使用 `models/best.onnx` 对手机提交的图片执行 YOLOv8-OBB 检测，输出裂缝或坑洞的旋转检测框、置信度及识别图像。模型按自身输入规格完成 Letterbox 预处理。照片损伤等级基于**检测框总面积占图像面积的比例**计算：
+
+```text
+无检测目标：无损伤
+0 < 面积占比 ≤ 2%：轻微
+2% < 面积占比 ≤ 10%：中度
+面积占比 > 10%：严重
+```
+
+**云端手机照片识别不使用双目距离加权**；边缘摄像头巡检的距离加权分级见 `../docs/ROAD_DAMAGE_ALGORITHM.md`。
+
+## 6. 运行与配置
+
+支持 Ubuntu 22.04/24.04 或兼容 Linux，建议 Python 3.10 及以上版本。启动前应核对模型、数据库目录、云端可达地址和相关服务凭据。
 
 ```bash
 cd qianduan
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-# 已包含 .env；迁移新服务器时可按 .env.example 调整
-```
-
-`qianduan/.env` 已包含之前使用的部署值。第一次运行前核对：
-
-- `HOST=0.0.0.0`、`PORT=5000`：绑定地址及端口。
-- `AMAP_JS_KEY`、`AMAP_JS_SECRET`：已使用历史项目中的高德 Web JS API Key 与安全密钥。
-- `DEVICE_TOKEN`：**首台设备**令牌，和本包 `houduan/.env` 中的主设备令牌相同。
-- `BOOTSTRAP_DEVICE_ID=pi-main`：首台设备编号；更多设备在管理员后台新增，每台获取独立令牌。
-- `DEVICE_CLOUD_BASE_URL=http://YOUR_SERVER_IP:5000`：管理员下载设备 `.env` 时使用的云端可达地址（若文件中没有此键，使用默认部署值）。
-- `SESSION_COOKIE_SECURE=0` 仅供本地 HTTP 测试；接入 HTTPS 后设置为 `1`。
-- `ROADSENSE_DATA_DIR` / `PHONE_YOLO_MODEL`：留空或不设置时分别使用 `data/` 与 `models/best.onnx` 的默认位置。
-
-**交付包按使用者要求包含已填好的 `.env`；公开仓库会暴露设备令牌和高德密钥。请在生产部署前轮换这些值。**
-
-## 3. 首次创建管理员
-
-现有代码自带两个预置管理员账号的**加盐密码哈希**（`server/admin_seeds.py`），第一次创建空数据库时自动写入。已有阿里云 `data/accounts.sqlite3` 的话，应当保留原数据，避免账号状态丢失。
-
-可使用 `python tools/check_admin_login.py` 仅在服务器本机检查账号；如需创建额外管理员，也可运行 `python tools/create_admin.py --username <登录名>`（输入密码时不回显）。
-
-**注意：历史压缩包不包含 ECS 上的真实数据库；新环境启动只创建新数据库，原损伤记录不会自动恢复，必须另外复制 ECS 上 `data/`。**
-
-## 4. 启动与检查
-
-调试环境：
-
-```bash
 python server/app.py
 ```
 
-在本机检查：
+主要配置项：
+
+| 配置项 | 用途 |
+|---|---|
+| `HOST`、`PORT` | Web 服务监听地址与端口 |
+| `ROADSENSE_DATA_DIR` | SQLite 数据库和归档图像的存储路径 |
+| `PHONE_YOLO_MODEL` | 手机照片识别所使用的 ONNX 模型路径 |
+| `ROADSENSE_SECRET_KEY` | Flask Session 签名密钥 |
+| `AMAP_JS_KEY`、`AMAP_JS_SECRET` | 网页端高德地图鉴权参数 |
+| `BOOTSTRAP_DEVICE_ID`、`DEVICE_TOKEN` | 初始设备身份配置 |
+| `DEVICE_CLOUD_BASE_URL` | 向边缘设备提供的云端服务地址 |
+| `SESSION_COOKIE_SECURE` | 会话 Cookie 的 HTTPS 传输策略 |
+
+可使用 `GET /api/health` 检查服务可达性。部署路径、服务端口、模型和数据目录均须与实际服务器环境保持一致。
+
+## 7. 服务管理与数据安全
+
+`deploy/roadsense.service` 提供 systemd 服务配置。完成路径核对及服务安装后，可使用：
 
 ```bash
-curl -i http://127.0.0.1:5000/api/health
-```
-
-浏览器进入 `http://YOUR_SERVER_IP:5000/login`，登录后使用 `/admin` 管理设备和账号。注册、验证码、设备可见范围和管理员权限在服务器端校验。
-
-## 5. 关闭终端后保持运行（systemd）
-
-部署示例在 `deploy/roadsense.service`。当前 service 已按历史部署路径 `/home/admin/RoadSense/qianduan` 和 `/home/admin/Intelligent-Road-Inspection-System/venv/bin/python` 设置；如实际环境不同再修改，然后：
-
-```bash
-sudo cp deploy/roadsense.service /etc/systemd/system/roadsense.service
 sudo systemctl daemon-reload
-sudo systemctl disable roadsense        # 不随系统开机自动启动
-sudo systemctl start roadsense          # 后台运行；可以关闭 SSH 窗口
-sudo systemctl is-active roadsense      # active 说明运行中
-```
-
-真正停止：
-
-```bash
+sudo systemctl start roadsense
+sudo systemctl status roadsense --no-pager
+sudo systemctl restart roadsense
 sudo systemctl stop roadsense
 ```
 
-更新代码后：`sudo systemctl restart roadsense`。日志：`sudo journalctl -u roadsense -n 100 --no-pager`。
+是否启用开机自启动由实际运维策略决定。日志可通过 `sudo journalctl -u roadsense -n 100 --no-pager` 查看。
 
-> 现有项目的 Flask 开发服务器仅用于测试；生产建议单 worker + 多线程 Gunicorn、受信任反向代理与 HTTPS，避免开发服务器直接暴露公网。
-
-## 6. 数据库、设备和照片
-
-运行时在 `data/` 自动建立：
-
-| 文件或目录 | 内容 |
-|---|---|
-| `accounts.sqlite3` | 用户、密码哈希、管理员/普通用户角色、定位授权 |
-| `devices.sqlite3` | 设备编号、所属账号、独立设备令牌哈希 |
-| `records.sqlite3` | 损伤记录、来源身份、管理员审计日志 |
-| `images/` | 原始及识别图像；数据库保存文件名 |
-
-旧版 `records.json` 可在首次初始化时迁移；**请先备份现有 `data/`**；本次代码压缩包不会自动提取云端历史数据库。系统使用 SQLite WAL 处理单实例并发；真正跨多个云工作进程时还需要独立状态服务。
-
-管理员可以新增设备、为设备分配普通用户，下载设备专属完整 `.env`；一个普通用户最多关联一台边缘设备。管理员也可以为未分配设备的普通用户单独开通手机定位权限。普通用户不能读取其他人的设备视频/归档图片。
-
-## 7. 主要接口
-
-- `GET /api/health`：服务健康检查。
-- `POST /update_stream`：经过设备令牌认证的实时画面上传。
-- `POST /upload`：设备损伤记录入库。
-- `GET /api/phone_location`：对应设备读取关联手机的备用坐标。
-- `POST /api/receive_location`：经登录会话与定位权限检查的手机坐标上传。
-- `POST /api/phone/preview`、`POST /api/phone/archive`：手机先预览、确认后归档。
-
-不建议直接在浏览器控制台手写请求绕过前端；所有操作都需要身份和权限校验。
-
-## 8. 测试与安全
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-若依赖或摄像头模拟环境不齐，先跑单独的 SQLite/纯 Python 测试再排查。所有密码应当以哈希存储；管理员只能重置普通用户密码，不能读取原始明文。有关路面检测与去重请看仓库 `docs/ROAD_DAMAGE_ALGORITHM.md`。
-
-### 已配置的部署路径
-
-云端 `.env` 默认将模型指向 `/home/admin/RoadSense/qianduan/models/best.onnx`，数据目录为 `/home/admin/RoadSense/qianduan/data`；你的系统若安装在别处，请调整对应项。`qianduan/deploy/roadsense.service` 指向你曾使用的共享 Python 虚拟环境路径，务必在不同服务器上检查 `ExecStart`。使用 `sudo systemctl disable roadsense` 可取消开机启动，但不会停止正在运行的服务。
-
-
-## NEO-F10N 边缘位置同步（本版）
-
-无需在阿里云安装 GPS 串口驱动。新版 `houduan` 通过 `/update_stream` **每 0.5 秒**发送最新有效位置状态；云端原有接口即可接收。硬件 GPS 优先、Android 手机备用。
-
-管理员在 **设备与数据管理** 添加或轮换设备后，可下载完整的 `houduan/.env`，模板位于 `qianduan/deploy/houduan.env.template`，已包含 `GPS_UPLOAD_INTERVAL=0.5`、`PHONE_POLL_INTERVAL=0.5`。
-
-第一次部署请检查本目录 `.env` 的 `HOST`、`PORT`、`ROADSENSE_DATA_DIR`、`PHONE_YOLO_MODEL`、`ROADSENSE_SECRET_KEY`、`AMAP_JS_KEY`、`AMAP_JS_SECRET`、`BOOTSTRAP_DEVICE_ID` 和 `DEVICE_TOKEN`：
-
-- 本交付包保留了现有配置；切换服务器后 **修改目录路径与公网地址**，不能把旧服务器的绝对路径视为通用路径。
-- `DEVICE_TOKEN` 在云端是首台设备初始化令牌；新设备由管理员页面生成独立令牌。
-- SQLite 的历史数据与图片只在实际服务器 `qianduan/data/`，源码包中的数据不能代替线上数据库；更新时要先备份，不要覆盖旧数据。
-
-用 Ubuntu 常驻方式运行（**不设置开机自启**）：
-
-```bash
-sudo systemctl disable roadsense  # 若曾启用开机自启
-sudo systemctl start roadsense    # 手动启动，关闭 Workbench 后持续运行
-sudo systemctl status roadsense --no-pager
-sudo systemctl stop roadsense     # 手动关闭
-```
-
-如果尚未安装服务文件，按 `deploy/roadsense.service` 中实际 Python 虚拟环境路径创建服务；第一次建议先 `python server/app.py` 验证依赖。
+应定期备份 SQLite 数据库与归档图片，并限制账号数据、定位记录、照片和访问令牌的访问权限。公网部署建议使用 HTTPS、受信任的反向代理及适当的生产级 WSGI 服务；Flask 内置开发服务器不宜直接作为公网生产部署方案。备份与恢复规范参见 `../docs/DATA_BACKUP.md`。

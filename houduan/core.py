@@ -19,6 +19,7 @@ import onnxruntime as ort
 import ast
 from obb_inference import decode_predictions, draw_detections, draw_severity_hud
 from video_pipeline import LatestJpeg, make_preview_server
+from stereo_distance import StereoDistanceEstimator, weighted_damage_ratio
 
 try:
     import serial
@@ -95,6 +96,7 @@ RPI_GPS_BAUD = int(os.environ.get("GPS_BAUD", "38400"))
 RPI_GPS_TIMEOUT = 1.0
 CAMERA_INDEX = int(os.environ.get("CAMERA_INDEX", "0"))
 CAMERA_SCAN_INTERVAL = float(os.environ.get("CAMERA_SCAN_INTERVAL", "5"))
+CAMERA_MAX_INDEX = max(2, min(int(os.environ.get('CAMERA_MAX_INDEX', '5')), 20))
 MODEL_PATH = os.environ.get("YOLO_MODEL", "best.onnx")
 SAVE_DIR = os.environ.get("SAVE_DIR", "severe_cracks")
 
@@ -119,7 +121,10 @@ latest_detections = []
 latest_prediction_time = 0.0
 latest_infer_ms = None
 latest_damage_ratio = 0.0
+latest_weighted_ratio = 0.0
 latest_damage_level = 0
+latest_distance_m = None
+latest_distance_source = 'mono'
 jpeg_hub = LatestJpeg()
 current_camera_index: Optional[int] = None
 current_camera_brightness: Optional[float] = None
@@ -217,14 +222,16 @@ def cleanup_old_records(directory: str, max_files: int = 1000) -> None:
 # ==========================================
 
 class CameraStream:
-    """优先 CAMERA_INDEX (默认 2)，失败后依次巡检 0、1、2，并自动重试热插拔。"""
+    """自动选 1280x480 双目；没有双目时保留普通单目及热插拔回退。"""
 
     def __init__(self, src=CAMERA_INDEX):
         self.preferred = int(src)
-        # 无法使用指定设备时，从 0 到 2 巡检，不依赖设备枚举顺序。
-        self.fallback = tuple(range(0, 3))
+        self.fallback = tuple(range(CAMERA_MAX_INDEX + 1))
         self.cap = None
         self.active_index = None
+        self.mode = 'missing'
+        self.right_rectified = None
+        self._pending_stereo = None
         self.ret = False
         self.frame = None
         self.lock = threading.RLock()
@@ -234,71 +241,153 @@ class CameraStream:
         self._last_capture_at = 0.0
         self._stop = threading.Event()
         self._next_scan_at = 0.0
+        try:
+            self.stereo = StereoDistanceEstimator()
+        except (ValueError, cv2.error, OSError) as exc:
+            self.stereo = None
+            print(f'[双目] 标定/初始化失败，仅使用单目：{exc}', flush=True)
         self._scan_for_device()
         threading.Thread(target=self.update, name='RoadSenseCamera', daemon=True).start()
+        threading.Thread(target=self._probe_stereo_loop, name='RoadSenseStereoHotplug', daemon=True).start()
 
-    def _try_open(self, index):
-        # MJPG often enables 30 FPS over USB where YUYV is limited to 5-10.
-        # However, stereo cameras may only support raw YUYV: always retry with
-        # unmodified default FourCC before deciding that a device is unusable.
-        for backend in (cv2.CAP_V4L2, cv2.CAP_ANY):
-            for prefer_mjpg in (True, False):
-                cap = cv2.VideoCapture(index, backend)
-                if not cap.isOpened():
+    def _try_open(self, index, stereo_only=False):
+        # Probe actual dimensions: cap.set() does not guarantee that the camera
+        # accepted the requested format. Try MJPEG and the device's native mode.
+        widths = (1280,) if stereo_only else (1280, 640)
+        if self.stereo is None:
+            widths = (640,)
+        for requested_width in widths:
+            for backend in (cv2.CAP_V4L2, cv2.CAP_ANY):
+                for prefer_mjpg in (True, False):
+                    cap = cv2.VideoCapture(index, backend)
+                    if not cap.isOpened():
+                        cap.release()
+                        continue
+                    if prefer_mjpg:
+                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, requested_width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    cap.set(cv2.CAP_PROP_FPS, 30)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    found = None
+                    for _ in range(5):
+                        ok, img = cap.read()
+                        if ok and img is not None and img.size > 0 and img.ndim == 3:
+                            h, w = img.shape[:2]
+                            if h == 480 and w == 1280 and self.stereo is not None:
+                                found = (cap, img, 'stereo')
+                                break
+                            if not stereo_only and requested_width == 640 and h > 0 and w > 0:
+                                found = (cap, img, 'mono')
+                                break
+                        time.sleep(0.03)
+                    if found:
+                        print(f'[摄像头] 设备{index}：{found[2]} {found[1].shape[1]}×'
+                              f'{found[1].shape[0]}，格式={"MJPG" if prefer_mjpg else "默认"}', flush=True)
+                        return found
                     cap.release()
-                    continue
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                if prefer_mjpg:
-                    cap.set(cv2.CAP_PROP_FOURCC,cv2.VideoWriter_fourcc(*'MJPG'))
-                cap.set(cv2.CAP_PROP_FPS, 30)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                for _ in range(7):
-                    ok, img = cap.read()
-                    if ok and img is not None and img.size > 0:
-                        lum=float(np.mean(cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)))
-                        if lum >= 6.0:
-                            fourcc=int(cap.get(cv2.CAP_PROP_FOURCC))
-                            codec=''.join(chr((fourcc >> (8*k)) & 0xff) for k in range(4))
-                            fps=cap.get(cv2.CAP_PROP_FPS)
-                            print(f'[摄像头] 已找到 {index}，编码={codec!r}，设备报告 {fps:.1f}FPS，'
-                                  f'模式={"MJPEG优先" if prefer_mjpg else "默认"}',flush=True)
-                            return cap, img
-                    time.sleep(0.04)
-                cap.release()
-            print(f'[摄像头] 设备 {index} 后端={backend} 无有效帧，尝试其他后端/设备',flush=True)
-        return None, None
+        return None, None, None
+
+    def _prepare_capture(self, image, mode):
+        if mode == 'stereo':
+            return self.stereo.rectify_pair(image)
+        return image, None
 
     def _scan_for_device(self):
-        # 优先2；失败再完整巡检0、1、2。日志中保留尝试过程。
+        # The first open mono device is a fallback, not a reason to stop
+        # looking for a calibrated stereo stream on another /dev/videoN.
         targets = list(dict.fromkeys([self.preferred] + list(self.fallback)))
-        print(f'[摄像头] 优先 CAMERA_INDEX={self.preferred}；不可用则自动巡检 0 → 1 → 2', flush=True)
+        print(f'[摄像头] 巡检 {targets}，优先选择 1280x480 双目，单目备用', flush=True)
+        chosen = None
+        mono_fallback = None
         for index in targets:
-            print(f'[摄像头] 正在检测视频设备 {index} ...', flush=True)
-            cap, img = self._try_open(index)
-            if cap is not None:
-                with self.lock:
-                    self.cap = cap
-                    self.active_index = index
-                    self.ret = True
-                    self.frame = img
-                    self.capture_sequence += 1
-                    self.failures = 0
-                print(f'[摄像头] 已连接序列号 {index}，视频 {img.shape[1]}×{img.shape[0]}，准备上报到 /update_stream', flush=True)
-                return True
+            cap, img, mode = self._try_open(index)
+            if cap is None:
+                continue
+            if mode == 'stereo':
+                chosen = (cap, img, mode, index)
+                break
+            if mono_fallback is None:
+                mono_fallback = (cap, img, mode, index)
+            else:
+                cap.release()
+        if chosen is None:
+            chosen, mono_fallback = mono_fallback, None
+        if chosen is not None:
+            cap, img, mode, index = chosen
+            try:
+                display, right = self._prepare_capture(img, mode)
+            except (ValueError, cv2.error) as exc:
+                print(f'[摄像头] 双目帧校正失败：{exc}；改用单目备用', flush=True)
+                cap.release()
+                if mono_fallback is None:
+                    self._next_scan_at = time.monotonic() + max(2.0, CAMERA_SCAN_INTERVAL)
+                    return False
+                cap, img, mode, index = mono_fallback
+                display, right = img, None
+                mono_fallback = None
+            if mono_fallback is not None:
+                mono_fallback[0].release()
+            with self.lock:
+                self.cap, self.active_index, self.mode = cap, index, mode
+                self.ret, self.frame, self.right_rectified = True, display, right
+                self.capture_sequence += 1
+                self.failures = 0
+            print(f'[摄像头] 选中设备 {index}，模式={mode}，YOLO 使用左目/单目画面', flush=True)
+            return True
         with self.lock:
             self.cap = None
             self.active_index = None
+            self.mode = 'missing'
+            self.right_rectified = None
             self.ret = False
             self.frame = None
         self._next_scan_at = time.monotonic() + max(2.0, CAMERA_SCAN_INTERVAL)
-        print(f'[摄像头] 未找到可读摄像头；{CAMERA_SCAN_INTERVAL:g} 秒后自动重新搜索，网页显示双目摄像头占位图。', flush=True)
+        print(f'[摄像头] 未找到摄像头；{CAMERA_SCAN_INTERVAL:g} 秒后重试', flush=True)
         return False
+
+    def _probe_stereo_loop(self):
+        """Check for a newly plugged stereo device without freezing mono FPS."""
+        while not self._stop.wait(15.0):
+            if self.stereo is None:
+                continue
+            with self.lock:
+                mode, active_index = self.mode, self.active_index
+                pending = self._pending_stereo is not None
+            if mode != 'mono' or pending:
+                continue
+            for index in dict.fromkeys([self.preferred] + list(self.fallback)):
+                if index == active_index or self._stop.is_set():
+                    continue
+                cap, img, found_mode = self._try_open(index, stereo_only=True)
+                if cap is None:
+                    continue
+                with self.lock:
+                    if self.mode == 'mono' and self._pending_stereo is None:
+                        self._pending_stereo = (cap, img, index)
+                        cap = None  # ownership transfers to capture thread
+                if cap is not None:
+                    cap.release()
+                break
 
     def update(self):
         while not self._stop.is_set():
             with self.lock:
+                pending, self._pending_stereo = self._pending_stereo, None
+                if pending is not None and self.mode == 'mono':
+                    old_cap = self.cap
+                    new_cap, first_frame, new_index = pending
+                    self.cap, self.active_index, self.mode = new_cap, new_index, 'stereo'
+                    self.failures = 0
+                    print(f'[摄像头] 发现新双目设备 {new_index}，自动切换到双目测距', flush=True)
+                else:
+                    old_cap = None
+                    if pending is not None:
+                        pending[0].release()
                 cap = self.cap
+                mode = self.mode
+            if old_cap is not None:
+                old_cap.release()
             if cap is None:
                 if time.monotonic() >= self._next_scan_at:
                     self._scan_for_device()
@@ -307,29 +396,36 @@ class CameraStream:
                 continue
             ok, img = cap.read()
             if ok and img is not None and img.size > 0:
-                captured = time.monotonic()
-                with self.lock:
-                    if self._last_capture_at:
-                        dt = captured - self._last_capture_at
-                        if dt > 0:
-                            measured = min(120.0, 1.0/dt)
-                            self.camera_fps = (measured if not self.camera_fps else
-                                               0.8*self.camera_fps + 0.2*measured)
-                    self._last_capture_at = captured
-                    self.ret, self.frame, self.failures = True, img, 0
-                    self.capture_sequence += 1
-                continue
+                try:
+                    display, right = self._prepare_capture(img, mode)
+                except (ValueError, cv2.error) as exc:
+                    print(f'[摄像头] 图像校正失败：{exc}', flush=True)
+                    ok = False
+                else:
+                    captured = time.monotonic()
+                    with self.lock:
+                        if self._last_capture_at:
+                            dt = captured - self._last_capture_at
+                            if dt > 0:
+                                measured = min(120.0, 1.0/dt)
+                                self.camera_fps = (measured if not self.camera_fps else
+                                                   0.8*self.camera_fps + 0.2*measured)
+                        self._last_capture_at = captured
+                        self.ret, self.frame, self.right_rectified, self.failures = True, display, right, 0
+                        self.capture_sequence += 1
+                    continue
             with self.lock:
-                self.ret, self.frame = False, None
+                self.ret, self.frame, self.right_rectified = False, None, None
                 self.camera_fps = 0.0
                 self.failures += 1
                 failures = self.failures
             if failures >= 8:
-                print(f'[摄像头] 设备 {self.active_index} 连续读取失败，释放并重新巡检 0~2。', flush=True)
+                print(f'[摄像头] 设备 {self.active_index} 连续读取失败，重新选择双目或单目', flush=True)
                 with self.lock:
                     if self.cap is cap:
                         self.cap = None
                         self.active_index = None
+                        self.mode = 'missing'
                 cap.release()
                 self._next_scan_at = time.monotonic()
             time.sleep(0.10)
@@ -339,6 +435,14 @@ class CameraStream:
             if not self.ret or self.frame is None:
                 return False, None
             return True, self.frame.copy()
+
+    def read_for_inference(self):
+        """Return a synchronized rectified left frame and optional right eye."""
+        with self.lock:
+            if not self.ret or self.frame is None:
+                return False, None, None, 'missing'
+            right = None if self.right_rectified is None else self.right_rectified.copy()
+            return True, self.frame.copy(), right, self.mode
 
     def read_with_sequence(self):
         """Use this in video encoder to avoid sending the same captured frame twice."""
@@ -355,8 +459,11 @@ class CameraStream:
         self._stop.set()
         with self.lock:
             cap, self.cap = self.cap, None
+            pending, self._pending_stereo = self._pending_stereo, None
         if cap is not None:
             cap.release()
+        if pending is not None:
+            pending[0].release()
 
 
 class YOLO_ONNX_Engine:
@@ -405,6 +512,11 @@ class YOLO_ONNX_Engine:
         self.model_inputs=self.session.get_inputs()
         self.last_detections=[]
         self.last_infer_ms=0
+        self.last_damage_ratio=0.0
+        self.last_weighted_ratio=0.0
+        self.last_distance_m=None
+        self.last_distance_source='mono'
+        self._last_stereo_error_notice=0.0
         self.last_infer_completed_at=0.0
         self.inference_counter=0
         print(f'[推理] 模型任务={"OBB旋转检测" if self.rotated else "普通检测"}，类别={self.classes}，'
@@ -425,7 +537,7 @@ class YOLO_ONNX_Engine:
         blob/=255.0
         return blob,r,(left,top)
 
-    def predict(self,frame):
+    def predict(self, frame, right_rectified=None, stereo_estimator=None):
         start=time.perf_counter()
         blob,ratio,padding=self.preprocess(frame)
         t0=time.perf_counter()
@@ -434,6 +546,22 @@ class YOLO_ONNX_Engine:
         detections=decode_predictions(raw,self.class_count,self.rotated,ratio,padding,frame.shape[:2],
                                      self.confidence_thres,self.iou_thres,max_candidates=self.nms_max_candidates)
         t2=time.perf_counter()
+        if detections and right_rectified is not None and stereo_estimator is not None:
+            try:
+                stereo_estimator.measure_detections(frame, right_rectified, detections)
+            except (cv2.error, ValueError, FloatingPointError) as exc:
+                if time.monotonic()-self._last_stereo_error_notice > 10:
+                    print(f'[双目] 本帧深度计算失败，按原单目面积规则评估：{exc}', flush=True)
+                    self._last_stereo_error_notice=time.monotonic()
+                for item in detections:
+                    item['distance_m']=None
+        valid_distances=[d['distance_m'] for d in detections if d.get('distance_m') is not None]
+        self.last_distance_m=(sum(valid_distances)/len(valid_distances)) if valid_distances else None
+        self.last_distance_source=('stereo' if valid_distances else
+                                   'stereo-invalid' if right_rectified is not None else 'mono')
+        self.last_damage_ratio,self.last_weighted_ratio=weighted_damage_ratio(detections,frame.shape)
+        fraction=self.last_weighted_ratio
+        level=0 if not detections else (1 if fraction<=THRES_MILD else 2 if fraction<=THRES_MODERATE else 3)
         self.last_detections=detections
         self.last_infer_ms=(time.perf_counter()-start)*1000
         self.inference_counter += 1
@@ -442,14 +570,15 @@ class YOLO_ONNX_Engine:
                   f'| 预处理 {(t0-start)*1000:.0f}ms '
                   f'| 模型运行 {(t1-t0)*1000:.0f}ms '
                   f'| OBB后处理 {(t2-t1)*1000:.0f}ms '
+                  f'| 深度+评估 {(time.perf_counter()-t2)*1000:.0f}ms '
+                  f'| 模式={self.last_distance_source} 面积={self.last_damage_ratio:.1%} '
+                  f'加权={self.last_weighted_ratio:.1%} 距离={self.last_distance_m}m '
                   f'| 后端 {self.session.get_providers()[0]}', flush=True)
         self.last_infer_completed_at=time.monotonic()
         annotated=draw_detections(frame,detections,self.classes)
-        area=sum(d['area'] for d in detections)
-        fraction=area/max(1,frame.shape[0]*frame.shape[1])
-        level=0 if not detections else (1 if fraction<=THRES_MILD else 2 if fraction<=THRES_MODERATE else 3)
-        self.last_damage_ratio = max(0.0,min(1.0,fraction))
-        annotated = draw_severity_hud(annotated, self.last_damage_ratio, level)
+        annotated = draw_severity_hud(annotated, self.last_damage_ratio, level,
+                                      self.last_weighted_ratio, self.last_distance_m,
+                                      self.last_distance_source)
         return annotated,level
 
 
@@ -581,7 +710,10 @@ def run_video_render_loop():
             detection_ref = None if latest_detection_reference is None else latest_detection_reference.copy()
             inference_ms = latest_infer_ms
             damage_ratio = latest_damage_ratio
+            weighted_ratio = latest_weighted_ratio
             damage_level = latest_damage_level
+            distance_m = latest_distance_m
+            distance_source = latest_distance_source
             command = global_command
         ok, frame, capture_seq = cam.read_with_sequence() if cam is not None else (False, None, -1)
         is_new_capture = ok and frame is not None and (
@@ -600,7 +732,8 @@ def run_video_render_loop():
                 and start - detected_at < 1.8 and visually_same):
                 frame = draw_detections(frame, detections, getattr(cam, 'class_names', []))
             if command == 'RUNNING' and detected_at and start-detected_at < 1.8 and visually_same:
-                frame = draw_severity_hud(frame,damage_ratio,damage_level)
+                frame = draw_severity_hud(frame, damage_ratio, damage_level,
+                                          weighted_ratio, distance_m, distance_source)
             h, w = frame.shape[:2]
             if w > VIDEO_OUTPUT_WIDTH:
                 new_size = (VIDEO_OUTPUT_WIDTH, round(h * VIDEO_OUTPUT_WIDTH / w))
@@ -799,7 +932,8 @@ def run_map_loop() -> None:
 def run_detection_loop() -> None:
     global latest_frame, latest_detection_count
     global current_camera_index, current_camera_brightness, current_camera_signal
-    global active_camera,latest_detections,latest_prediction_time,latest_infer_ms,latest_damage_ratio,latest_damage_level
+    global active_camera,latest_detections,latest_prediction_time,latest_infer_ms,latest_damage_ratio,latest_weighted_ratio,latest_damage_level
+    global latest_distance_m, latest_distance_source
     global latest_detection_reference, latest_detection_event
     last_missing_gps_notice = 0.0
     cam = CameraStream()
@@ -809,7 +943,7 @@ def run_detection_loop() -> None:
     print("[边缘端] 硬件初始化完成，进入待命状态...")
 
     while True:
-        success, frame = cam.read()
+        success, frame, right_rectified, camera_mode = cam.read_for_inference()
         index, connected = cam.status()
         if not success or frame is None:
             with lock:
@@ -831,7 +965,9 @@ def run_detection_loop() -> None:
                 print("[系统] 接收到执行指令，正在向内存载入 YOLO 权重...")
                 model = YOLO_ONNX_Engine(MODEL_PATH)
 
-            annotated_frame, severity_level = model.predict(frame)
+            annotated_frame, severity_level = model.predict(
+                frame, right_rectified=right_rectified,
+                stereo_estimator=cam.stereo if camera_mode == 'stereo' else None)
             # Snapshot the GPS at inference time. No GPS => no archive event.
             # A location acquired later cannot retroactively geotag an old image.
             fix = location_manager.snapshot()
@@ -852,7 +988,10 @@ def run_detection_loop() -> None:
                 latest_detection_reference=cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),(32,24),interpolation=cv2.INTER_AREA)
                 latest_infer_ms=model.last_infer_ms
                 latest_damage_ratio=model.last_damage_ratio
+                latest_weighted_ratio=model.last_weighted_ratio
                 latest_damage_level=severity_level
+                latest_distance_m=model.last_distance_m
+                latest_distance_source=model.last_distance_source
                 cam.class_names=model.classes
 
         else:
@@ -862,7 +1001,10 @@ def run_detection_loop() -> None:
                 latest_prediction_time=0.0
                 latest_detection_reference=None
                 latest_damage_ratio=0.0
+                latest_weighted_ratio=0.0
                 latest_damage_level=0
+                latest_distance_m=None
+                latest_distance_source='mono'
             annotated_frame = frame.copy()
             severity_level = 0
 

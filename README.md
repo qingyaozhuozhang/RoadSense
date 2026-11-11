@@ -1,155 +1,154 @@
 # RoadSense — 道路智能巡检平台
 
-基于 **YOLOv8-OBB + 硬件 NEO-F10N / Android 双定位 + Flask + SQLite** 的多设备道路损伤巡检平台。云端集中管理账号、设备、实时画面和归档；树莓派识别道路损伤；Android 负责原生位置、拍照识别和现场归档。
+RoadSense 是面向道路日常巡检与病害信息管理的智能化系统。平台采用**云—边—端协同架构**，以阿里云为业务管理中心，以树莓派为边缘计算节点，以 Android 设备为移动巡检终端，实现道路图像采集、道路损伤识别、双目视觉测距、损伤程度评估、定位关联和数据归档。
 
-## 项目目录
+系统使用 **YOLOv8-OBB** 检测道路裂缝（Crack）和坑洞（Hole），通过 **ONNX Runtime** 执行模型推理。边缘设备结合双目立体视觉估计目标距离，并通过距离加权的检测区域占比进行损伤分级；云端提供多设备管理、用户授权、地图可视化与历史记录查询；移动端提供原生定位、拍照识别和人工确认归档。
+
+## 1. 系统总体架构
+
+| 架构层级 | 组成部分 | 主要职责 | 核心技术 |
+|---|---|---|---|
+| 云端 | 云端管理平台 | 用户认证、分级授权、设备管理、巡检控制、图像分析、记录归档及可视化 | Flask、SQLite、HTTP API、高德地图 JavaScript API、ONNX Runtime |
+| 边缘端 | 边缘计算节点 | 双目图像采集、道路损伤检测、立体匹配测距、损伤分级、GNSS 定位及视频上传 | Python、OpenCV、YOLOv8-OBB、ONNX Runtime、StereoBM、UART |
+| 移动端 | 移动巡检终端 | 账号登录、设备关联、原生定位、现场拍照、云端识别和确认归档 | Kotlin、Android 前台服务、高德定位 SDK、HTTP API |
+
+云端网页采用 **B/S（Browser/Server）架构**；树莓派与 Android 通过 HTTP 接口与云端通信。检测结果、巡检位置和用户权限均由云端统一管理。
+
+## 2. 主要功能
+
+### 2.1 智能道路损伤识别
+
+边缘端对摄像头画面进行预处理与 YOLOv8-OBB 推理，识别裂缝和坑洞，并输出目标类别、置信度以及旋转检测框。模型输入采用与 ONNX 模型相匹配的尺寸，当前为 **640×640**；图像通过等比例缩放与 Letterbox 填充适配模型输入。识别结果映射回采集图像坐标系，用于视频标注与损伤评估。
+
+### 2.2 双目视觉测距与损伤评估
+
+双目视觉采集采用 **1280×480 的左右拼接画面**，左右目分别为 **640×480**。系统通过相机标定参数完成双目校正，在左目画面上执行目标检测，结合右目图像进行 **StereoBM 立体匹配**，依据视差恢复空间信息，估计检测目标与相机之间的距离。
+
+边缘端以检测框面积占比为基础，使用有效测距结果进行距离加权，形成综合损伤评分，并划分为无损伤、轻微、中度和严重四种结果。对无法取得可靠距离的检测目标，系统按照未加权面积参与评估。该分级属于项目内部的启发式风险评估，不等同于基于实际裂缝宽度、坑洞深度或道路工程规范的损伤等级认定。
+
+### 2.3 多源定位与空间关联
+
+边缘设备通过 **u-blox NEO-F10N 双频 GNSS 接收模块**获取卫星定位，Android 终端通过原生定位服务获取位置。边缘巡检采用**硬件 GNSS 优先、所属账号手机定位备用**的选择机制：硬件定位有效期为 **5 秒**，手机备用定位有效期为 **30 秒**。没有有效坐标时，系统不生成自动归档记录。
+
+定位同步以 **0.5 秒**为目标通信间隔；实际新坐标产生频率受 GNSS 接收机、手机定位 SDK、系统调度及网络条件影响。
+
+### 2.4 巡检控制与数据归档
+
+管理员及具备相应设备权限的用户可以通过网页控制巡检任务。边缘设备在巡检运行状态下生成检测事件，并将道路损伤照片、等级、经纬度和来源信息上传云端。为降低同一任务内的重复记录，系统采用 **20 米空间邻近判定与损伤等级比较**进行去重。
+
+Android 终端支持拍摄或选择图片，云端执行 YOLO 识别并返回预览结果。用户确认后，系统在通过授权和位置有效性校验的前提下保存记录。
+
+### 2.5 用户与设备权限管理
+
+系统采用**角色访问控制（RBAC）、设备归属控制与移动端独立授权**相结合的方式：
+
+- 管理员统一管理用户、设备、设备归属、移动定位授权以及全部巡检记录。
+- 普通用户仅能访问本人所属设备及相关数据，不能跨账号查看设备视频或损伤照片。
+- 已分配设备的普通用户具备相应的移动定位权限；未分配设备的普通用户须获得管理员独立授权，方可使用手机定位与拍照归档。
+- 设备使用独立的 `DEVICE_ID` 和 `DEVICE_TOKEN` 进行接口认证；账号访问由 Flask 在服务端完成身份与权限校验。
+
+SQLite 负责保存账号角色、设备归属、授权状态及巡检数据；**权限判断由 Flask 执行，SQLite 不直接承担接口授权功能**。
+
+## 3. 识别与归档流程
+
+```text
+双目摄像头 / 可用摄像头
+          ↓
+图像采集、校正与预处理
+          ↓
+YOLOv8-OBB 旋转目标检测
+          ↓
+裂缝 / 坑洞类别、置信度、旋转框
+          ↓
+双目目标距离估计（具备有效双目数据时）
+          ↓
+检测区域占比与距离加权评分
+          ↓
+损伤等级判定、实时视频标注
+          ↓
+巡检状态与有效位置校验
+          ↓
+空间去重及云端归档
+          ↓
+SQLite 记录 + 图像文件 + 地图展示
+```
+
+移动端照片通过独立的云端识别流程处理，采用检测框面积占比评估，不使用边缘端的双目距离权重。
+
+## 4. 项目组成
 
 ```text
 RoadSense/
-├── README.md                         GitHub 首页和全链路运行说明
+├── README.md                    项目总览与系统运行说明
 ├── qianduan/
-│   ├── README.md                     云端配置、数据库与运维说明
-│   ├── .env                          现有配置，部署到新机器时按说明更新
-│   ├── server/                       Flask API、认证、设备归属、SQLite
-│   ├── frontend/                     HTML/CSS/JS 管理工作台
-│   ├── deploy/houduan.env.template   新设备完整环境配置导出模板
-│   └── models/best.onnx              手机照片识别模型
+│   ├── README.md                云端服务说明
+│   ├── server/                  Flask API、认证、授权及数据存储
+│   ├── frontend/                网页管理界面
+│   ├── models/best.onnx         云端照片识别模型
+│   └── deploy/                  服务部署文件与设备配置模板
 ├── houduan/
-│   ├── README.md                     树莓派接线和配置说明
-│   ├── .env                          现有设备配置，含 0.5 秒上报
-│   ├── core.py                       摄像头 / YOLO / GPS / 视频 / 归档
-│   ├── rpi/neo_f10n_simple.py        新 NEO-F10N 解析驱动（原始上传版）
-│   ├── location_state.py             位置选择及过期判断
-│   └── best.onnx                     边缘识别模型
+│   ├── README.md                边缘计算节点说明
+│   ├── core.py                  采集、推理、巡检与上传主程序
+│   ├── stereo_distance.py       双目测距及距离加权评估
+│   ├── camera_config.py         双目标定参数
+│   ├── obb_inference.py         OBB 后处理与结果可视化
+│   ├── location_state.py        多源定位有效性与优先级管理
+│   ├── rpi/                     GNSS 定位数据解析
+│   └── best.onnx                边缘道路损伤检测模型
 ├── Android_Studio/
-│   ├── README.md                     Android Studio 编译和操作说明
-│   ├── app/                          Kotlin 手机程序
-│   └── gradle/                       Gradle 配置
-└── docs/                             算法、数据备份和清理说明
+│   ├── README.md                移动巡检终端说明
+│   └── app/                     Kotlin Android 应用
+└── docs/
+    ├── ROAD_DAMAGE_ALGORITHM.md 视觉检测、测距与归档算法
+    ├── DATA_BACKUP.md           数据备份与恢复
+    └── CLEANUP.md               仓库文件说明
 ```
 
-## 0. 先确认运行环境
+## 5. 部署环境
 
-1. **阿里云**：Ubuntu 24.04，部署路径可用 `/home/admin/RoadSense/qianduan`，运行 HTTP `5000`；需要 Python 与 ONNX Runtime 相关依赖。
-2. **边缘设备**：树莓派 Ubuntu / Raspberry Pi OS；USB 摄像头；NEO-F10N UART GPS（默认 `/dev/serial0`、38400）。
-3. **手机**：Android 8.0+，安装 RoadSense，允许需要的定位权限。
-4. **网络**：树莓派和手机都能访问云端 HTTP 服务。GNSS 卫星定位本身不需要网络。
+| 部分 | 基本要求 |
+|---|---|
+| 云端 | Ubuntu 22.04/24.04 或兼容 Linux、Python 3.10+、可用存储目录与访问端口 |
+| 边缘端 | 树莓派或兼容 Linux 主机、Python 3.10+、摄像头、ONNX Runtime 兼容运行环境 |
+| 双目视觉 | 支持 1280×480 左右拼接视频流；标定参数对应单目 640×480 |
+| 卫星定位 | NEO-F10N UART 接口；串口参数与实际设备一致 |
+| 移动端 | Android 8.0 及以上，支持相机、定位、网络和前台服务 |
+| 网络 | 云端地址对树莓派及 Android 终端可达；生产部署建议使用 HTTPS |
 
-## 1. 云端配置（先配置、先启动）
+云端服务启动：
 
 ```bash
-cd /home/admin/RoadSense/qianduan
+cd qianduan
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-```
-
-保留 `qianduan/.env` 现有值；部署到自己的机器时逐项核对：
-
-| 配置字段 | 怎么填 |
-|---|---|
-| `HOST`、`PORT` | 服务监听地址与端口，当前 `0.0.0.0`、`5000` |
-| `ROADSENSE_DATA_DIR` | **实际** SQLite 与图片保存的绝对路径，如 `/home/admin/RoadSense/qianduan/data` |
-| `PHONE_YOLO_MODEL` | 云端 ONNX 模型的实际绝对路径 |
-| `AMAP_JS_KEY`、`AMAP_JS_SECRET` | 本项目当前 Web 端高德密钥；换应用时填自己的 |
-| `ROADSENSE_SECRET_KEY` | Flask Session 签名密钥，已提供现有值，更换服务器建议生成新值 |
-| `DEVICE_TOKEN`、`BOOTSTRAP_DEVICE_ID` | 初始边缘设备的身份；新增设备由管理员后台单独签发 |
-| `SESSION_COOKIE_SECURE` | 暂时 HTTP 调试填 `0`；启用可信 HTTPS 后改 `1` |
-| `DEVICE_CLOUD_BASE_URL` | 管理员下载设备 `.env` 时写入的云端公网 URL |
-
-启动测试：
-
-```bash
 python server/app.py
 ```
 
-访问 `http://你的服务器IP:5000`；确认能登录和打开管理员设备管理页面。生产环境建议 HTTPS。**更新已有阿里云服务时先备份 `qianduan/data/`，不要把空目录覆盖旧数据库。**
-
-## 2. 树莓派配置和 NEO-F10N GPS 接线
-
-UART 接线：`GPS TX → Pi RX`，`GPS RX → Pi TX`，`GND → Pi GND`；供电和电平按模块标注，GPIO UART 必须为兼容 3.3V 的串口信号。启用串口并禁用 Linux 串口控制台。
-
-编辑 `houduan/.env`，**不要清空已提供的其他参数**：
-
-```dotenv
-CLOUD_BASE_URL=http://39.102.84.218:5000
-DEVICE_ID=pi-main
-DEVICE_TOKEN=由管理员签发的本机专属令牌
-GPS_PORT=/dev/serial0
-GPS_BAUD=38400
-GPS_UPLOAD_INTERVAL=0.5
-PHONE_POLL_INTERVAL=0.5
-CAMERA_INDEX=2
-YOLO_MODEL=best.onnx
-```
-
-上述令牌一行是**填写说明**；交付 `.env` 已保留原来的设备令牌。如果管理员轮换过密钥，必须使用最新下载值。启动前可以先测试驱动：
+边缘端启动：
 
 ```bash
 cd houduan
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements_runtime.txt
-python -m rpi.neo_f10n_simple --port /dev/serial0 --baud 38400
+python core.py
 ```
 
-成功取得定位后按 `Ctrl+C` 退出单独测试，再执行 `python core.py`。同一 UART 串口不能同时被测试程序和主程序占用。
+配置字段及运行维护方式见各子模块说明。项目中的环境配置文件包含部署相关参数，应根据实际主机环境妥善管理，不应将设备令牌、会话密钥或地图密钥公开。
 
-`GPS_UPLOAD_INTERVAL=0.5` 表示**每 0.5 秒发送一次最新有效位置状态**，但新坐标的产生速度仍取决于 GPS 模块实际导航更新率和网络状况；不要误认为设备在软件配置后一定输出 2Hz 新坐标。
+## 6. 技术边界
 
-## 3. Android 配置与安装
+- 视频采集帧率、视频上传帧率与模型推理帧率是不同指标，不应混用。
+- 双目距离依赖相机标定质量、图像纹理和有效视差，不能保证每个目标都有可用深度。
+- 距离加权得分属于图像尺度下的工程评估量，不代表实际物理损伤面积。
+- GNSS 与手机定位存在环境误差，20 米去重半径属于巡检数据管理参数，不等同于病害真实地理边界。
+- 当前 HTTP 部署方式适用于受控测试环境；公网服务应配套 HTTPS、凭据保护与运维监控。
 
-在 Android Studio 打开 `Android_Studio`，Gradle JDK 使用 21；保持现有 `build.gradle.kts` 中的云端 URL 和高德 Android Key，或者在 Android Studio 自动生成的 `local.properties` 追加：
+## 7. 详细文档
 
-```properties
-roadsense.cloudBaseUrl=http://39.102.84.218:5000
-roadsense.amapAndroidKey=在高德开放平台申请的Android类型Key
-```
-
-下载 Gradle 依赖后运行 `gradlew.bat :app:assembleDebug`。发布签名 APK 需使用你自己原来的 `.jks`，它不随源码提供。Gradle wrapper JAR 若缺失，可运行 `Setup-Windows.ps1`，或复制已验证可用的版本。详见 [Android 使用说明](Android_Studio/README.md)。
-
-## 4. 普通用户的使用流程
-
-在网页注册账号 → 登录 Android App → 管理员分配所属设备（如果没有设备，管理员可单独授权手机定位）→ 点击 **开始定位** → 手机按权限上传自己的坐标 → 在网页查看对应设备的实时监控、执行开始/结束巡检 → 拍照预览道路损伤 → 有效坐标下点击 **确认归档** → 在自己的损伤记录档案中查阅。
-
-**普通用户无权查看其他账号设备。** 无设备且未获定位权限的普通用户点击“开始定位”时会提示联系管理员，不会新增灰色禁用按钮。
-
-## 5. 管理员的使用流程
-
-登录网页管理员账号 → 进入“设备与数据管理” → 添加设备或分配归属账号 → 为无设备普通用户授予/撤销手机定位权限 → 在“在线设备画面”查看各设备 → 选择设备开始巡检 → 在“损伤记录档案”查询地理位置和图片 → 在管理员管理页编辑/删除记录、重置普通账号密码或删除符合条件的账号。
-
-新设备通过管理员页面下载完整 `houduan/.env`，放入对应的树莓派目录；**设备编号和密钥要与云端登记的一致**。
-
-## 6. 自动归档规则
-
-`摄像头 → YOLOv8-OBB → 损伤分级 → 巡检 RUNNING 检查 → 硬件 GPS 优先/手机备用 → 定位有效期判断 → 20 米空间去重 → POST /upload → SQLite 及图片`。
-
-没有任何有效定位时只显示损伤检测框，**绝不保存无坐标损伤记录**。手机确认归档也必须有新鲜且有效的手机坐标；拍照预览不等于已归档。
-
-## 7. 关闭窗口后继续运行（阿里云）
-
-如果已安装 `roadsense.service`，使用以下命令；**不需要设置开机自启**：
-
-```bash
-sudo systemctl disable roadsense
-sudo systemctl start roadsense
-sudo systemctl status roadsense --no-pager
-# 关闭 Workbench / SSH 窗口，程序继续运行
-sudo systemctl stop roadsense
-```
-
-若尚未安装服务，请根据 `qianduan/deploy/roadsense.service` 内容核对**实际虚拟环境路径**后，再放到 `/etc/systemd/system/roadsense.service`，执行 `sudo systemctl daemon-reload`。不要同时手动运行 `python server/app.py` 占用同一端口。
-
-## 8. 配置、安全与数据
-
-- 按你的要求，完整包保留了 `qianduan/.env`、`houduan/.env`、当前设备凭据和 ONNX 模型。公开 GitHub 后，已提交的密钥将对所有人可见；建议未来轮换设备令牌及 Session 密钥。
-- 历史 ZIP **无法代替线上真正运行的账号 SQLite、道路损伤记录和照片**，需要从阿里云 `qianduan/data/` 另行备份（见 `docs/DATA_BACKUP.md`）。
-- 当前 HTTP `5000` 是调试配置，传输的登录密码、身份凭据没有 TLS 加密。
-- 视频编码帧率不等于 YOLO 推理帧率；GPS 上报间隔也不等于 GNSS 模块实际定位间隔。
-- 源码已做静态检查，真实 UART/网络/Android 实机运行需要在设备上验证。
-
-## 子项目 README
-
-- [qianduan 使用与配置](qianduan/README.md)
-- [houduan 使用与配置](houduan/README.md)
-- [Android 使用与配置](Android_Studio/README.md)
+- [云端管理平台](qianduan/README.md)
+- [边缘计算节点](houduan/README.md)
+- [移动巡检终端](Android_Studio/README.md)
+- [道路损伤识别、测距与归档算法](docs/ROAD_DAMAGE_ALGORITHM.md)
+- [数据备份与恢复](docs/DATA_BACKUP.md)

@@ -79,32 +79,43 @@ def draw_detections(frame, detections, labels, colors=None):
         points=np.asarray(item['corners'],dtype=np.int32).reshape(4,2)
         cv2.polylines(out,[points],True,color,2,cv2.LINE_AA)
         label=labels[cls] if cls<len(labels) else str(cls)
+        if item.get('distance_m') is not None:
+            label=f"{label} {item['distance_m']:.2f}m"
         p=tuple(map(int,points[np.argmin(points[:,1])]))
         cv2.putText(out,label,(max(2,p[0]),max(20,p[1]-5)),
                     cv2.FONT_HERSHEY_SIMPLEX,.52,color,2,cv2.LINE_AA)
     return out
 
 
-def draw_severity_hud(frame, damage_ratio, severity_level):
-    """Top-right AI result card: area share and severity, never confidence."""
+def draw_severity_hud(frame, damage_ratio, severity_level,
+                      weighted_ratio=None, distance_m=None, depth_source='mono'):
+    """Show raw detection area and distance-weighted score separately."""
     out=frame.copy()
     h,w=out.shape[:2]
-    if h<80 or w<200:
+    if h<130 or w<230:
         return out
     ratio=max(0.0,min(1.0,float(damage_ratio or 0.0)))
+    score=ratio if weighted_ratio is None else max(0.0,min(1.0,float(weighted_ratio)))
     level=max(0,min(3,int(severity_level)))
     color=((51,214,128),(37,195,237),(47,178,255),(90,84,245))[level]
     names=('NONE','MILD','MODERATE','SEVERE')
-    width=max(164,min(260,int(w*0.42)))
+    width=max(230,min(285,int(w*0.47)))
     x0=max(2,w-width-12);x1=min(w-2,x0+width)
-    y0=12;y1=min(h-8,87)
+    y0=12;y1=min(h-8,130)
     shade=out.copy()
     cv2.rectangle(shade,(x0,y0),(x1,y1),(13,30,48),-1)
     cv2.addWeighted(shade,.82,out,.18,0,out)
     cv2.rectangle(out,(x0,y0),(x1,y1),(67,105,145),1,cv2.LINE_AA)
     cv2.rectangle(out,(x0,y0),(x0+4,y1),color,-1)
-    cv2.putText(out,f'DAMAGE  {ratio:.1%}',(x0+14,y0+27),
+    cv2.putText(out,f'AREA    {ratio:.1%}',(x0+14,y0+27),
                 cv2.FONT_HERSHEY_SIMPLEX,.53,(241,248,255),1,cv2.LINE_AA)
-    cv2.putText(out,f'SEVERITY  {names[level]}',(x0+14,y0+56),
+    cv2.putText(out,f'SCORE   {score:.1%}',(x0+14,y0+53),
+                cv2.FONT_HERSHEY_SIMPLEX,.53,(241,248,255),1,cv2.LINE_AA)
+    cv2.putText(out,f'SEVERITY  {names[level]}',(x0+14,y0+79),
                 cv2.FONT_HERSHEY_SIMPLEX,.48,color,1,cv2.LINE_AA)
+    source_text=(f'STEREO  {distance_m:.2f}m' if depth_source=='stereo' and distance_m is not None
+                 else 'STEREO / NO DEPTH' if depth_source=='stereo-invalid'
+                 else 'MONO / AREA ONLY')
+    cv2.putText(out,source_text,(x0+14,y0+105),
+                cv2.FONT_HERSHEY_SIMPLEX,.43,(188,215,234),1,cv2.LINE_AA)
     return out
